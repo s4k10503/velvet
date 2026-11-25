@@ -1,0 +1,18 @@
+### Fixed
+
+- A `has-[.class]:` or `has-[:checked]:` element now matches its descendants as they stand after each of these
+  changes, as `:has()` matches the tree after any change:
+  - a descendant relocated by `z-*` or `order-*` that the element's own render created, which it did not match until
+    a later render, and one that render removed, which it kept matching;
+  - the children of a `V.Portal` that unmounted from a target inside the element, which it kept matching unless that
+    render also rendered the element or something inside it;
+  - a class a play writes onto a descendant, a `V.Motion` pose's or an enter or exit class, which it did not follow
+    until a later render re-derived it;
+  - the children a `V.Portal` of another root mounts inside the element, which it did not match.
+- The rows of a `V.VirtualList` now match their structural variants (`first:`, `last:`, `odd:`, `even:`, `nth-N:`…)
+  by their place among the rows the list shows. Their match was not derived from the rows a range placed, so a row a
+  scroll made the first did not match `first:`.
+- A `V.VirtualList` range that took a row holding a `V.Portal` away outside a render, which a scroll or a resize does
+  once the list's items have emptied, left the target's other children matching their structural variants as though
+  the Portal's children were still there, and a `has-[…]:` element above the target matching those children. Both
+  now follow the target as the range leaves it.

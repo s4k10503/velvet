@@ -296,6 +296,7 @@ namespace Velvet
                 {
                     Settle(_box, ctx, _boxGate);
                 }
+                RestyleAbove(ctx);
             }
 
             public void ReSync(ReconcilerContext? ctx)
@@ -308,7 +309,12 @@ namespace Velvet
                 {
                     ctx!.VariantGatedReSync?.Invoke(_box!);
                 }
+                RestyleAbove(ctx);
             }
+
+            // A has- element above the element matches the classes a play writes, as :has(.foo) matches a class a
+            // script adds; the box is the element's descendant, so the walk up from the element covers it too.
+            private void RestyleAbove(ReconcilerContext? ctx) => FiberNodePatcher.RestyleTreeAround(ctx, _control);
 
             private static void Settle(VisualElement element, ReconcilerContext? ctx, bool gateChanged)
             {

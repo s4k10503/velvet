@@ -471,10 +471,11 @@ namespace Velvet
                 {
                     var suspended = ChildPass.DrainPendingPortalMounts(wave);
                     // After the drain, whose own reconciles can tear down a Portal too.
-                    foreach (var target in _ctx.PortalTargetsToRestyle)
+                    foreach (var seed in _ctx.TreeRestyleSeeds)
                     {
-                        NodePatcher.ApplyStructuralVariants(target);
+                        NodePatcher.ApplyStructuralVariants(seed);
                     }
+                    FiberNodePatcher.RefreshHasVariantsAbove(_ctx.TreeRestyleSeeds);
                     if (suspended && (wave == null || closingRoot is { IsDisposed: false }))
                     {
                         throw walked ? FiberSuspendSignal.AfterTheWalk : FiberSuspendSignal.Instance;
@@ -508,7 +509,7 @@ namespace Velvet
             }
             finally
             {
-                _ctx.PortalTargetsToRestyle.Clear();
+                _ctx.TreeRestyleSeeds.Clear();
                 // Always clear the queue at top-level boundary so partially drained passes do
                 // not leak placeholders into the next reconcile; an abort raised DURING the
                 // drain (a boundary inside a portal's children) is consumed at this boundary
@@ -755,6 +756,12 @@ namespace Velvet
         // Ahead of a rewrite of the rows by index, as FiberZLayerCoordinator.NoteChildrenReconciled is ahead of a diff.
         void IReconcilerBridge.BeginRowPlacementForController(VisualElement container)
             => FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, container);
+
+        void IReconcilerBridge.EndRowPlacementForController(VisualElement container)
+            => NodePatcher.ApplyStructuralVariants(container);
+
+        // The structural half of FiberNodePatcher.RestyleTreeAround, which holds no patcher of its own.
+        internal void ApplyStructuralVariantsOf(VisualElement element) => NodePatcher.ApplyStructuralVariants(element);
 
         // A range rendered inside a pass is that pass's to end. One rendered outside a pass is bracketed by
         // SharedReconcileDepth, as an in-pass range already is: a Component row's mount is then no top-level pass of

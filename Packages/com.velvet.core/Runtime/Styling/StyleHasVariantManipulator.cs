@@ -177,17 +177,17 @@ namespace Velvet
             for (var i = 0; i < count; i++)
             {
                 var child = ChildListWrites.HierarchyChild(content, i);
-                if (child is INotifyValueChanged<bool> boolField && boolField.value)
-                {
-                    return true;
-                }
-                if (AnyDescendantChecked(child))
+                if (!FiberZLayerCoordinator.IsReadByHas(child, out var unplaced)) continue;
+                if (IsCheckedOrHoldsChecked(child) || (unplaced != null && IsCheckedOrHoldsChecked(unplaced)))
                 {
                     return true;
                 }
             }
             return false;
         }
+
+        private static bool IsCheckedOrHoldsChecked(VisualElement element)
+            => (element is INotifyValueChanged<bool> boolField && boolField.value) || AnyDescendantChecked(element);
 
         private void OnFocusIn(FocusInEvent evt)
         {

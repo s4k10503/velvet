@@ -663,6 +663,7 @@ namespace Velvet
                     ChildListWrites.Add(_visibleContainer, _reconciler.SlotOccupantForController(newElements[i]));
                 }
             }
+            _reconciler.EndRowPlacementForController(_visibleContainer);
         }
 
         // The buffers go with the rows they held: IndexOldRenderedItems offers whatever they still name

@@ -3198,6 +3198,7 @@ namespace Velvet
 
             Configure<HasVariantOp, StyleHasVariantManipulator>(element, hasAny,
                 new HasVariantOp(@checked, focus, checkedDeclarations, focusDeclarations));
+            if (hasAny) NoteHasRules(_ctx);
         }
 
         // Collects the payloads of every has-[:checked]: / has-[:focus]: token of the given kind. A payload
@@ -3277,6 +3278,7 @@ namespace Velvet
                 return;
             }
             _ctx.HasClassVariants[element] = rules;
+            NoteHasRules(_ctx);
 
             // Evaluate now when children are already placed — the normal create / patch paths reconcile
             // children BEFORE this class pass, so the just-registered rule lights up in the same pass. The
@@ -3298,17 +3300,7 @@ namespace Velvet
         {
             foreach (var rule in rules)
             {
-                var on = false;
-                var content = element.contentContainer;
-                var count = ChildListWrites.HierarchyCount(content);
-                for (var i = 0; i < count; i++)
-                {
-                    if (SubtreeCarriesClass(ChildListWrites.HierarchyChild(content, i), rule.ClassName!))
-                    {
-                        on = true;
-                        break;
-                    }
-                }
+                var on = DescendantCarriesClass(element.contentContainer, rule.ClassName!);
                 StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Has, ctx,
                     declarations: rule.Declarations);
             }
@@ -3317,16 +3309,18 @@ namespace Velvet
         // :has(.foo) tests the class attribute, which the cascade never edits: a class the projection took off
         // an element to let a variant win still matches, and one a variant payload put on it does not.
         private static bool SubtreeCarriesClass(VisualElement root, string cls)
+            => (root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
+                || StyleClassProjection.SuppressesOwnClass(root, cls)
+                || DescendantCarriesClass(root, cls);
+
+        private static bool DescendantCarriesClass(VisualElement parent, string cls)
         {
-            if ((root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
-                || StyleClassProjection.SuppressesOwnClass(root, cls))
-            {
-                return true;
-            }
-            var count = ChildListWrites.HierarchyCount(root);
+            var count = ChildListWrites.HierarchyCount(parent);
             for (var i = 0; i < count; i++)
             {
-                if (SubtreeCarriesClass(ChildListWrites.HierarchyChild(root, i), cls))
+                var child = ChildListWrites.HierarchyChild(parent, i);
+                if (!FiberZLayerCoordinator.IsReadByHas(child, out var unplaced)) continue;
+                if (SubtreeCarriesClass(child, cls) || (unplaced != null && SubtreeCarriesClass(unplaced, cls)))
                 {
                     return true;
                 }
@@ -3382,43 +3376,34 @@ namespace Velvet
         // Dirty-scoped: a flush mutates only its OWN region — the elements committed as children of regionRoot
         // (the flushing fiber's MountPoint) and their subtrees — plus any Portal target it (re)mounted children
         // into. A has- element matches on its DESCENDANTS, so its match can change only if a mutation landed
-        // inside its subtree; that means the has- element is regionRoot itself or one of its ANCESTORS (a has-
-        // element strictly BELOW regionRoot whose descendant changed was reconciled in this same flush, so its
-        // own post-children pass already covered it, after its descendants' recorded halves had applied). So rather
-        // than re-scan EVERY registered has- element each flush, walk up from regionRoot — and from each active Portal
-        // target, whose children live outside regionRoot's subtree — and re-derive only the registered has- elements found on those chains. This is
-        // O(depth) instead of O(registered has- elements x subtree scan), the win the sweep needs under many
-        // has- elements x frequent flushes. A null regionRoot (region unknown) falls back to re-deriving all so
-        // a stale payload is never missed. Idempotent (each evaluation reads the current subtree); no has- map
+        // inside its subtree. One strictly BELOW regionRoot is left to its own post-children pass, which the flush's
+        // walk ran wherever it changed a descendant of that element, behind its descendants' recorded halves; that pass
+        // reads a relocated descendant through its placeholder (FiberZLayerCoordinator.IsReadByHas), and a Portal's
+        // teardown and a play's classes, which land after it, re-derive the tree around them (RestyleTreeAround). So
+        // rather than re-scan EVERY registered has- element each flush, walk up from regionRoot — and from each active
+        // Portal target, whose children live outside regionRoot's subtree — and re-derive only the registered has-
+        // elements found on those chains. This is O(depth) instead of O(registered has- elements x subtree scan), the
+        // win the sweep needs under many has- elements x frequent flushes. A null regionRoot (region unknown) falls
+        // back to re-deriving every registered has- element so a stale payload is never missed. Idempotent (each evaluation reads the current subtree); no has- map
         // is mutated by an evaluation (payloads resolve to USS classes / inline styles / stacked manipulators,
         // not has- registrations), so walking and re-deriving in place is safe.
         internal static void RefreshHasVariants(ReconcilerContext? ctx, VisualElement? regionRoot)
         {
-            if (ctx == null)
+            if (ctx == null || !AnyContextHoldsHasRules())
             {
-                return;
-            }
-            var hasClass = ctx.HasClassVariants.Count > 0;
-            var hasManip = ctx.HasVariantManipulators.Count > 0;
-            if (!hasClass && !hasManip)
-            {
-                // Zero-cost when has- is unused anywhere (the common case): both maps empty.
                 return;
             }
 
             if (regionRoot == null)
             {
-                // Region unknown — re-derive every registered has- element so a stale payload is never missed.
-                if (hasClass)
+                for (var i = 0; i < s_hasContexts.Count; i++)
                 {
-                    foreach (var kv in ctx.HasClassVariants)
+                    if (!s_hasContexts[i].TryGetTarget(out var holder) || !HoldsHasRules(holder)) continue;
+                    foreach (var kv in holder.HasClassVariants)
                     {
-                        EvaluateHasClass(ctx, kv.Key, kv.Value);
+                        EvaluateHasClass(holder, kv.Key, kv.Value);
                     }
-                }
-                if (hasManip)
-                {
-                    foreach (var kv in ctx.HasVariantManipulators)
+                    foreach (var kv in holder.HasVariantManipulators)
                     {
                         kv.Value.Rescan();
                     }
@@ -3426,7 +3411,7 @@ namespace Velvet
                 return;
             }
 
-            ReevaluateHasOnAncestorChain(ctx, regionRoot, hasClass, hasManip);
+            ReevaluateHasOnAncestorChain(regionRoot);
 
             // A Portal commits its children into a target OUTSIDE regionRoot's subtree, so a has- ancestor of
             // that target is not on regionRoot's chain. Portals are rare (this map is empty otherwise); when any
@@ -3440,24 +3425,112 @@ namespace Velvet
                     // the never-mounted missing-registry path.
                     if (info.Target != null)
                     {
-                        ReevaluateHasOnAncestorChain(ctx, info.Target, hasClass, hasManip);
+                        ReevaluateHasOnAncestorChain(info.Target);
                     }
                 }
             }
         }
 
+        // For a write to element's rows or classes that a post-children pass need not follow: re-derives the structural
+        // variants of its rows and the has- variants of it and its ancestors. While ctx's pass records, applies or is
+        // still on the stack the tree is not finished, so the end of that pass does it (Reconciler.FinishPass);
+        // otherwise it is done at once.
+        internal static void RestyleTreeAround(ReconcilerContext? ctx, VisualElement element)
+        {
+            if (ctx != null && (ctx.SharedReconcileDepth > 0 || ctx.Pass.Recording || ctx.Pass.Applying))
+            {
+                ctx.TreeRestyleSeeds.Add(element);
+                return;
+            }
+            if (ctx is { IsDisposed: false }) ctx.Root?.ApplyStructuralVariantsOf(element);
+            RefreshHasVariantsAbove(element);
+        }
+
+        // The has- half of RestyleTreeAround.
+        internal static void RefreshHasVariantsAbove(VisualElement element)
+        {
+            if (AnyContextHoldsHasRules()) ReevaluateHasOnAncestorChain(element);
+        }
+
+        private static readonly HashSet<VisualElement> s_seedAncestors = new();
+
+        // The has- half of RestyleTreeAround for the seeds a pass queued, re-deriving each element above them once
+        // however many seeds share it: a walk stops at an element an earlier one reached, whose own ancestors it reached
+        // as well. So the drain is bounded by the elements on the seeds' chains rather than by seeds times depth, and a
+        // has- element above many seeds scans its subtree once.
+        internal static void RefreshHasVariantsAbove(HashSet<VisualElement> seeds)
+        {
+            if (seeds.Count == 0 || !AnyContextHoldsHasRules()) return;
+            try
+            {
+                foreach (var seed in seeds)
+                {
+                    for (var e = seed; e != null && s_seedAncestors.Add(e); e = ChildListWrites.ParentOf(e))
+                    {
+                        ReevaluateHasAt(e);
+                    }
+                }
+            }
+            finally
+            {
+                s_seedAncestors.Clear();
+            }
+        }
+
+        // The contexts that have held a has- rule. A walk up from an element reads all of them rather than the
+        // walking context's tables alone: a Portal and a root mounted inside another root's element write into a
+        // tree whose has- elements another context registered. Weak, so a context nothing else holds is not kept.
+        private static readonly List<WeakReference<ReconcilerContext>> s_hasContexts = new();
+
+        private static void NoteHasRules(ReconcilerContext ctx)
+        {
+            for (var i = s_hasContexts.Count - 1; i >= 0; i--)
+            {
+                if (!s_hasContexts[i].TryGetTarget(out var held))
+                {
+                    s_hasContexts.RemoveAt(i);
+                }
+                else if (ReferenceEquals(held, ctx))
+                {
+                    return;
+                }
+            }
+            s_hasContexts.Add(new WeakReference<ReconcilerContext>(ctx));
+        }
+
+        private static bool AnyContextHoldsHasRules()
+        {
+            for (var i = 0; i < s_hasContexts.Count; i++)
+            {
+                if (s_hasContexts[i].TryGetTarget(out var ctx) && HoldsHasRules(ctx)) return true;
+            }
+            return false;
+        }
+
+        private static bool HoldsHasRules(ReconcilerContext ctx)
+            => !ctx.IsDisposed && (ctx.HasClassVariants.Count > 0 || ctx.HasVariantManipulators.Count > 0);
+
         // Re-derives every registered has- element on the ancestor chain from root (inclusive) up to the DOM
-        // root. O(depth) with O(1) lookups — see RefreshHasVariants for why only this chain can be affected.
-        private static void ReevaluateHasOnAncestorChain(
-            ReconcilerContext ctx, VisualElement root, bool hasClass, bool hasManip)
+        // root. O(depth) O(1) lookups for each context s_hasContexts holds — see RefreshHasVariants for why only this
+        // chain can be affected.
+        private static void ReevaluateHasOnAncestorChain(VisualElement root)
         {
             for (var e = root; e != null; e = ChildListWrites.ParentOf(e))
             {
-                if (hasClass && ctx.HasClassVariants.TryGetValue(e, out var rules))
+                ReevaluateHasAt(e);
+            }
+        }
+
+        private static void ReevaluateHasAt(VisualElement element)
+        {
+            for (var i = 0; i < s_hasContexts.Count; i++)
+            {
+                if (!s_hasContexts[i].TryGetTarget(out var ctx) || !HoldsHasRules(ctx)) continue;
+                if (ctx.HasClassVariants.TryGetValue(element, out var rules))
                 {
-                    EvaluateHasClass(ctx, e, rules);
+                    EvaluateHasClass(ctx, element, rules);
                 }
-                if (hasManip && ctx.HasVariantManipulators.TryGetValue(e, out var manipulator))
+                if (ctx.HasVariantManipulators.TryGetValue(element, out var manipulator))
                 {
                     manipulator.Rescan();
                 }

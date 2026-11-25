@@ -722,10 +722,9 @@ namespace Velvet
                 ReturnOccupantToPool(child, poolable);
             }
 
-            // Outside a pass nothing would drain the set.
-            if (portalInfo.SlotLength > 0 && _ctx.SharedReconcileDepth > 0)
+            if (portalInfo.SlotLength > 0)
             {
-                _ctx.PortalTargetsToRestyle.Add(target);
+                FiberNodePatcher.RestyleTreeAround(_ctx, target);
             }
         }
 

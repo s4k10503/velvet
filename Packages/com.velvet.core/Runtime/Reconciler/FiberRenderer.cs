@@ -107,6 +107,9 @@ namespace Velvet
                 try
                 {
                     RenderAndReconcile(fiber);
+                    // As a flush refreshes its region (FiberWorkLoop.CommitFlushedFiber). Sub-work renders into what
+                    // encloses it, whose own end refreshes.
+                    if (opensWave) FiberWave.RefreshHasVariants(context, fiber.MountPoint);
                 }
                 finally
                 {

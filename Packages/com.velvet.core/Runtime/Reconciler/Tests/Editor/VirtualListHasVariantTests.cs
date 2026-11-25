@@ -10,7 +10,8 @@ namespace Velvet.Tests
     /// Specifies a <c>has-[…]:</c> element against what a <see cref="V.VirtualList{T}"/> range rendered from a scroll
     /// or a resize, outside any pass, changes under it: a <c>has-[.class]:</c> element matches a row the range places
     /// carrying the class and stops matching the rows it takes away, and one above the target a row's Portal mounts its
-    /// children in matches a child carrying the class the range mounts there; a <c>has-[:checked]:</c> element matches
+    /// children in matches a child carrying the class the range mounts there and stops matching it once a range takes
+    /// that row away; a <c>has-[:checked]:</c> element matches
     /// a toggle the range places checked. Each holds by the time the range update returns, and a row's own layout
     /// effect reads the match already.
     /// </summary>
@@ -172,6 +173,30 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Holder.ClassListContains("bg-mark"), Is.True);
+        }
+
+        [Test]
+        public void Given_AHasElementAboveTheTargetOfAPortalRow_When_AResizeTakesTheRowsOfEmptiedItemsAway_Then_ItStopsMatching()
+        {
+            // Arrange — the row for "c" is a Portal into "target", which sits under "holder" rather than "parent", and a
+            // render of the host places "a" to "c" inside its pass. A viewport collapsed to nothing then keeps the render
+            // that empties the items from taking the rows away.
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            s_target = _root.Q<VisualElement>("target");
+            s_selectedRow = _ => V.Portal(s_target, new VNode[] { V.Div(className: "selected") });
+            var controller = Controller(mounted);
+            SetViewport(controller, 200f);
+            Render(mounted);
+            SetViewport(controller, 0f);
+            s_items = Array.Empty<string>();
+            Render(mounted);
+            var matchedBeforeTheResize = Holder.ClassListContains("bg-mark");
+
+            // Act — the viewport comes back, and the range it asks for, outside any pass, holds no item.
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert — null where the element did not match the Portal's child before the resize.
+            Assert.That(matchedBeforeTheResize ? Holder.ClassListContains("bg-mark") : (bool?)null, Is.False);
         }
 
         [Test]

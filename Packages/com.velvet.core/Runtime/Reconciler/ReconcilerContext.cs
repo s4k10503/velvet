@@ -1751,10 +1751,9 @@ namespace Velvet
         // still parented by that element, which no caller holds.
         internal HashSet<VisualElement> PendingHostPlaceholders { get; } = new();
 
-        // Portal targets that lost children to a Portal's teardown this pass. Their remaining children changed
-        // sibling position with no reconcile of the target to re-derive structural variants, so the top-level
-        // boundary does it (Reconciler.FinishTopLevelPass).
-        internal HashSet<VisualElement> PortalTargetsToRestyle { get; } = new();
+        // What FiberNodePatcher.RestyleTreeAround was asked to re-derive while this context's pass was open, which the
+        // end of the pass does once its writes have applied (Reconciler.FinishPass).
+        internal HashSet<VisualElement> TreeRestyleSeeds { get; } = new();
 
         // The parents FiberZLayerCoordinator has relocated children of, with how it last arranged them. An entry is
         // dropped once the parent holds no relocated child.
