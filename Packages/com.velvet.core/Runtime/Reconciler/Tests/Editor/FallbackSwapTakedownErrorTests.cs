@@ -257,6 +257,8 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("caught:B:render:Child caught:B:ref:T"));
         }
 
+        // The relocated element's parent, the mount point, outlives the swap, so the element still stands there once its
+        // placeholder is taken down, and leaves once the pass's writes have applied.
         [Component(IsErrorBoundary = true, DisplayName = "B")]
         private static VNode CatchesOverAZPlacedDetachThrower()
         {
@@ -267,21 +269,12 @@ namespace Velvet.Tests
                 V.Component(ThrowsInRenderWhen, throws, key: "child"));
         }
 
-        // The boundary's rows sit in an element that outlives the swap, so the relocated element still stands in it once
-        // its placeholder is taken down, and leaves it once the pass's writes have applied.
-        [Component]
-        private static VNode HoldsAZPlacingBoundary()
-            => V.Div(className: "relative", children: new VNode[]
-            {
-                V.Component(CatchesOverAZPlacedDetachThrower, key: "b"),
-            });
-
         [Test]
         public void Given_ABoundaryWhoseOwnRenderCatchesAChildsRenderError_When_ItsSwapRemovesAZPlacedElementThatThrowsAsItDetaches_Then_TheBoundaryReportsBothErrors()
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = Mount(log, V.Component(HoldsAZPlacingBoundary, key: "holder"));
+            using var mounted = Mount(log, V.Component(CatchesOverAZPlacedDetachThrower, key: "b"));
             log.Clear();
 
             // Act
