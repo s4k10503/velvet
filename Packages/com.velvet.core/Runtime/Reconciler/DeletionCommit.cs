@@ -381,11 +381,19 @@ namespace Velvet
             AddHeld(owned);
         }
 
+        // An element FiberZLayerCoordinator relocated sits where it sorted it in its parent's list, so it is met where its
+        // placeholder stands instead, as PreOrderTeardown.Visit reaches it.
         private void MeetPortalsUnder(VisualElement element)
         {
             if (Ctx.PortalState.ContainsKey(element) && _portalsUnderRoots.Add(element)) _metPortals.Add(element);
             var count = ChildListWrites.HierarchyCount(element);
-            for (var i = 0; i < count; i++) MeetPortalsUnder(ChildListWrites.HierarchyChild(element, i));
+            for (var i = 0; i < count; i++)
+            {
+                var child = ChildListWrites.HierarchyChild(element, i);
+                if (FiberZLayerCoordinator.PlaceholderOf(Ctx, child) != null) continue;
+                MeetPortalsUnder(child);
+                if (Ctx.ZLayerPlaceholders.TryGetValue(child, out var real)) MeetPortalsUnder(real);
+            }
         }
 
         private void AddHeld(List<ComponentFiber>? held)

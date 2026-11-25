@@ -206,6 +206,26 @@ namespace Velvet.Tests
             Assert.That(held == null ? -1 : EntriesLeftInPooledWalks(field), Is.EqualTo(0));
         }
 
+        // A round of the walk empties what it met before it ends, so the list holds a Portal past a round only where the
+        // round threw. That is stood in for by writing one into it.
+        [Test]
+        public void Given_AWalkLeftHoldingAPortalItsRoundMet_When_ItEnds_Then_ItKeepsNone()
+        {
+            // Arrange
+            using var mounted = V.Mount(new VisualElement(), V.Div());
+            var ctx = mounted.Root.Reconciler.Context;
+            var walk = DeletionCommit.Begin(ctx, new FiberElementCleaner(ctx), container: null, slotStart: 0, occupants: null);
+            var met = typeof(DeletionCommit).GetField("_metPortals", BindingFlags.NonPublic | BindingFlags.Instance)
+                ?.GetValue(walk) as IList;
+            met?.Add(new VisualElement());
+
+            // Act
+            walk.End();
+
+            // Assert — a walk with no such list reads as a count the expected one is not
+            Assert.That(met == null ? -1 : met.Count, Is.EqualTo(0));
+        }
+
         // GREEN_ON_BASE(characterization): the base returns and clears its pooled walks and plans the same way; only the helper that reads the pool moved.
         [Test]
         public void Given_ADeletionRunTwice_When_TheSecondHasEnded_Then_TheSecondReturnedTheOnePlanItRented()

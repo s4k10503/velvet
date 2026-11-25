@@ -39,8 +39,8 @@ namespace Velvet.Tests
             return V.Label(text: "reader:" + value);
         }
 
-        // Its layout cleanup, which the hide runs ahead of the Portal, takes the Portal's first labelled row out of the
-        // target by hand.
+        // Its layout cleanup, which the hide runs ahead of the Portal, takes the Portal's row named a out of the target by
+        // hand.
         [Component(Compiler = false)]
         private static VNode Taker()
         {

@@ -13,8 +13,8 @@ namespace Velvet.Tests
     /// indexed diff's, of an unkeyed list; the keyed diff's tail removal, its trimmed middle and its map pass, with the
     /// tail removal and the map pass time-sliced as well; and that of a deletion that waits for the pass to apply its
     /// writes, of the rows of a Portal inside a deleted row. One case for each. That deletion also takes the rows of
-    /// sibling Portals in the order the Portals appear in the tree, whichever of them mounted first, and wherever the
-    /// records of Portals unmounted before them sat.
+    /// sibling Portals in the order the Portals appear in the tree, whichever of them mounted first, wherever the
+    /// records of Portals unmounted before them sat, and wherever a z-index or a flex order moved the element holding one.
     /// </summary>
     /// <remarks>
     /// The rows sit on a real panel, which is what runs a detach callback.
@@ -263,6 +263,52 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Left(), Is.EqualTo("a b"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes the Portals in the order their records were made, tree order here.
+        // The z-index or flex order sorts the element holding one Portal away from its slot in the holder's own list.
+        [TestCase("absolute z-10", true, "a b")]
+        [TestCase("absolute -z-10", false, "b a")]
+        [TestCase("order-last", true, "a b")]
+        public void Given_ARowHoldingAPortalInsideARelocatedElementBesideAnotherPortal_When_AReconcileLeavesItsSlotEmpty_Then_TheirRowsDetachInTreeOrder(
+            string relocated, bool relocatedFirst, string expected)
+        {
+            // Arrange — the Portal inside the relocated element holds the row named a, the one beside it the row named b.
+            var target = new VisualElement();
+            _host.Root.Add(target);
+            var inside = V.Div(name: "relocated", className: relocated, children: new VNode?[]
+            {
+                V.Portal(target, children: Rows(keyed: false, "a"), key: "inside"),
+            });
+            var beside = V.Portal(target, children: Rows(keyed: false, "b"), key: "beside");
+            var before = new VNode[]
+            {
+                V.Div(name: "holder", className: "relative",
+                    children: relocatedFirst ? new VNode?[] { inside, beside } : new VNode?[] { beside, inside }),
+            };
+            _reconciler.Reconcile(_container, Array.Empty<VNode>(), before);
+            LogDetachOf(target, "a", "b");
+            var sorted = HolderListOutOfTreeOrder(relocatedFirst);
+
+            // Act
+            _reconciler.Reconcile(_container, before, new VNode?[] { null });
+
+            // Assert — a holder whose own list kept tree order reads as text no expected order spells
+            Assert.That(sorted ? Left() : "unsorted", Is.EqualTo(expected));
+        }
+
+        // Whether the holder's own child list puts the relocated element on the other side of the Portal beside it from
+        // where the tree declares it.
+        private bool HolderListOutOfTreeOrder(bool relocatedFirst)
+        {
+            var holder = _container.Q<VisualElement>("holder");
+            var relocated = holder.hierarchy.IndexOf(_container.Q<VisualElement>("relocated"));
+            var beside = -1;
+            for (var i = 0; i < holder.hierarchy.childCount; i++)
+            {
+                if (_reconciler.Context.PortalState.ContainsKey(holder.hierarchy[i])) beside = i;
+            }
+            return beside >= 0 && (relocatedFirst ? relocated > beside : relocated < beside);
         }
     }
 }
