@@ -21,8 +21,6 @@ namespace Velvet
     {
         internal const string MarkerClass = "velvet-class-probe";
 
-        // Whether element is one of the pair a probe container holds, which no element of the application's has as a
-        // descendant.
         internal static bool IsProbe(VisualElement element)
             => ChildListWrites.ParentOf(element) is { } parent && parent.ClassListContains(MarkerClass);
 

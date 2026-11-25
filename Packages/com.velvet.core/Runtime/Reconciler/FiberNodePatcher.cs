@@ -3313,9 +3313,9 @@ namespace Velvet
         }
 
         // :has(.foo) tests the class attribute, which the cascade never edits: a class the projection took off
-        // an element to let a variant win still matches, and one a variant payload put on it does not. Nor does the
-        // probe StyleUserClassProperties hosts beside an element a payload of the class reached, which carries it until
-        // the panel's next layout pass; it is asked only where an element carries the class.
+        // an element to let a variant win still matches, and one a variant payload put on it does not. Nor does a
+        // probe StyleUserClassProperties hosts, which carries the class until the panel's next layout pass; it is asked
+        // only where an element carries the class.
         private static bool SubtreeCarriesClass(VisualElement root, string cls)
             => (((root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
                     || StyleClassProjection.SuppressesOwnClass(root, cls))
