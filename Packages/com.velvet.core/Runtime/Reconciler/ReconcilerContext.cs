@@ -3747,7 +3747,11 @@ namespace Velvet
         // Retires the whole table, as the owning Reconciler's disposal does.
         internal void RetireAllPresenceStates()
         {
-            foreach (var state in new List<PresenceBoundaryState>(PresenceStates.Values)) SettleExitsOf(state);
+            foreach (var state in new List<PresenceBoundaryState>(PresenceStates.Values))
+            {
+                SettleExitsOf(state);
+                state.Node = null;
+            }
             PresenceStates.Clear();
             _presenceBoundaries.Clear();
             _presenceParents.Clear();
