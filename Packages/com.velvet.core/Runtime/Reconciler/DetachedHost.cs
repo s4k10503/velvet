@@ -28,8 +28,8 @@ namespace Velvet
         // The latest capture named the owner's output by FiberRenderer's commit of it, or by an owner rendered inline
         // holding it where the capture is taken, less one whose render a Suspense or an abandoned pass then discarded
         // (DiscardCapturesOf). Resolve reads it where no capture is of a render that is the owner's now: a render
-        // committed since that did not reach the node took none. A fallback swap commits its tree elsewhere, so a
-        // capture its fallback takes is read only while that tree is the owner's.
+        // committed since that did not reach the node took none. A fallback swap commits its tree elsewhere and marks
+        // none of the captures its fallback takes.
         private DetachedHostCapture? _committed;
 
         // Tops is read only where a list's rows render outside a pass (Reconciler.BeginDetachedItemScope), so a Portal's
