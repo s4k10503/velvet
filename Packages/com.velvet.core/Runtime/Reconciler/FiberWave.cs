@@ -65,7 +65,7 @@ namespace Velvet
         }
 
         // Applies the pass the wave's renders recorded into, commits the hook state they staged, routes what the
-        // writes threw and refreshes the has- regions of the flushes the wave rendered, each step whether or not the
+        // writes threw and refreshes the has- regions of the flushes and the mount it rendered, each step whether or not the
         // one before it threw.
         internal static void End(ReconcilerContext ctx)
         {

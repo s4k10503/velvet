@@ -1755,6 +1755,10 @@ namespace Velvet
         // end of the pass does once its writes have applied (Reconciler.FinishPass).
         internal HashSet<VisualElement> TreeRestyleSeeds { get; } = new();
 
+        // Set once this context places rows into a container another context also places rows into
+        // (SharedRowContainers); until then a structural pass reads nothing more than its own rules.
+        internal bool SharesRowContainers { get; set; }
+
         // The parents FiberZLayerCoordinator has relocated children of, with how it last arranged them. An entry is
         // dropped once the parent holds no relocated child.
         public Dictionary<VisualElement, ZLayerHostRecord> ZLayerHosts { get; } = new();

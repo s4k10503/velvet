@@ -9,9 +9,9 @@ namespace Velvet.Tests
     /// Specifies a <c>has-[…]:</c> element against changes to its subtree that its own post-children pass does not
     /// see: a relocated (<c>z-*</c>) descendant, which joins its parent only once its pass ends, and which a removal
     /// retires until then; a Portal's children leaving the target the element holds, each time they leave; and a Portal
-    /// from another root, which registered none of the element's rules. Each holds once the change has rendered, as
-    /// <c>:has()</c> matches the tree as it stands after any change, and a sweep of another root that knows no region
-    /// re-derives the element too.
+    /// from another root, which registered none of the element's rules, or another root mounted under the element and
+    /// then disposed. Each holds once the change has rendered, as <c>:has()</c> matches the tree as it stands after any
+    /// change, and a sweep of another root that knows no region re-derives the element too.
     /// </summary>
     [TestFixture]
     internal sealed class HasVariantTreeChangeTests
@@ -199,6 +199,23 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(holderRoot.Q<VisualElement>("holder").ClassListContains("bg-mark"), Is.True);
+        }
+
+        [Test]
+        public void Given_AHasClassElementMatchingTheRowOfARootMountedUnderIt_When_ThatRootIsDisposed_Then_ItStopsMatching()
+        {
+            // Arrange
+            var holderRoot = new VisualElement();
+            using var holding = V.Mount(holderRoot, HolderTree());
+            var nested = V.Mount(holderRoot.Q<VisualElement>("target"), V.Div(className: "on"));
+            var holder = holderRoot.Q<VisualElement>("holder");
+            var matchedWhileMounted = holder.ClassListContains("bg-mark");
+
+            // Act
+            nested.Dispose();
+
+            // Assert — null where the element did not match the mounted root's row.
+            Assert.That(matchedWhileMounted ? holder.ClassListContains("bg-mark") : (bool?)null, Is.False);
         }
     }
 }

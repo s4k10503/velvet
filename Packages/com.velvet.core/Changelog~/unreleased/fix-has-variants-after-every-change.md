@@ -8,7 +8,13 @@
     render also rendered the element or something inside it;
   - a class a play writes onto a descendant, a `V.Motion` pose's or an enter or exit class, which it did not follow
     until a later render re-derived it;
-  - the children a `V.Portal` of another root mounts inside the element, which it did not match.
+  - the children a `V.Portal` of another root mounts inside the element, which it did not match;
+  - the rows of another root mounted inside the element, which it did not match until a render of its own root
+    re-derived it, and the same rows once that root is disposed, which it then kept matching.
+- A child of an element that holds the rows of two roots, one root's element that another root's `V.Portal` renders
+  into or that another root is mounted into, now matches its structural variants (`first:`, `last:`, `only:`…) by its
+  place among all of the element's children after either root changes them. A change one root made re-derived only
+  the children whose variants that root declared, so `only:` kept holding beside the other root's rows.
 - The rows of a `V.VirtualList` now match their structural variants (`first:`, `last:`, `odd:`, `even:`, `nth-N:`…)
   by their place among the rows the list shows. Their match was not derived from the rows a range placed, so a row a
   scroll made the first did not match `first:`.

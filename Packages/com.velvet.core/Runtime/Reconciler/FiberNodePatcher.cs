@@ -3198,7 +3198,7 @@ namespace Velvet
 
             Configure<HasVariantOp, StyleHasVariantManipulator>(element, hasAny,
                 new HasVariantOp(@checked, focus, checkedDeclarations, focusDeclarations));
-            if (hasAny) NoteHasRules(_ctx);
+            if (hasAny) s_hasContexts.Add(_ctx);
         }
 
         // Collects the payloads of every has-[:checked]: / has-[:focus]: token of the given kind. A payload
@@ -3278,7 +3278,7 @@ namespace Velvet
                 return;
             }
             _ctx.HasClassVariants[element] = rules;
-            NoteHasRules(_ctx);
+            s_hasContexts.Add(_ctx);
 
             // Evaluate now when children are already placed — the normal create / patch paths reconcile
             // children BEFORE this class pass, so the just-registered rule lights up in the same pass. The
@@ -3399,7 +3399,7 @@ namespace Velvet
             {
                 for (var i = 0; i < s_hasContexts.Count; i++)
                 {
-                    if (!s_hasContexts[i].TryGetTarget(out var holder)) continue;
+                    if (!s_hasContexts.TryGet(i, out var holder)) continue;
                     foreach (var kv in holder.HasClassVariants)
                     {
                         EvaluateHasClass(holder, kv.Key, kv.Value);
@@ -3473,28 +3473,8 @@ namespace Velvet
 
         // The contexts that have held a has- rule. A walk up from an element reads all of them rather than the
         // walking context's tables alone: a Portal and a root mounted inside another root's element write into a
-        // tree whose has- elements another context registered. Weak, so a context nothing else holds is not kept.
-        private static readonly List<WeakReference<ReconcilerContext>> s_hasContexts = new();
-
-        private static void NoteHasRules(ReconcilerContext ctx)
-        {
-            // MUTANT_SURVIVES(equivalent, boundary): an entry the walk never reaches is a context added again, which
-            // every walk then evaluates twice against the same tree, or a dead one, which every reader skips.
-            for (var i = s_hasContexts.Count - 1; i >= 0; i--)
-            {
-                if (!s_hasContexts[i].TryGetTarget(out var held))
-                {
-                    // MUTANT_SURVIVES(equivalent, line removed): every reader skips an entry TryGetTarget hands
-                    // nothing back for.
-                    s_hasContexts.RemoveAt(i);
-                }
-                else if (ReferenceEquals(held, ctx))
-                {
-                    return;
-                }
-            }
-            s_hasContexts.Add(new WeakReference<ReconcilerContext>(ctx));
-        }
+        // tree whose has- elements another context registered.
+        private static readonly WeakContextList s_hasContexts = new();
 
         // Re-derives every registered has- element on the ancestor chain from root (inclusive) up to the DOM
         // root. O(depth) O(1) lookups for each context s_hasContexts holds — see RefreshHasVariants for why only this
@@ -3511,7 +3491,7 @@ namespace Velvet
         {
             for (var i = 0; i < s_hasContexts.Count; i++)
             {
-                if (!s_hasContexts[i].TryGetTarget(out var ctx)) continue;
+                if (!s_hasContexts.TryGet(i, out var ctx)) continue;
                 if (ctx.HasClassVariants.TryGetValue(element, out var rules))
                 {
                     EvaluateHasClass(ctx, element, rules);
@@ -3799,12 +3779,40 @@ namespace Velvet
         // Container post-children pass: re-derives every structural child's position-based match from the
         // live sibling order, so a child added / removed / reordered updates first:/last:/odd:/even: across
         // the whole list. Runs at the same hook as gap/divide (after children reconcile). Stateless and
-        // idempotent, with a cheap global early-out when no structural variant exists anywhere.
+        // idempotent. A context reads only the rules it registered, so over a container other contexts place rows
+        // into (SharedRowContainers) it re-derives theirs with their own.
         private readonly List<VisualElement?> _structuralRows = new();
 
         internal void ApplyStructuralVariants(VisualElement container)
         {
-            if (container == null || _ctx.StructuralVariants.Count == 0)
+            if (container == null)
+            {
+                return;
+            }
+            ApplyStructuralVariantsOf(_ctx, container, _structuralRows);
+            if (!_ctx.SharesRowContainers)
+            {
+                return;
+            }
+            if (!SharedRowContainers.TryGetPlacers(container, out var placers))
+            {
+                return;
+            }
+            for (var i = 0; i < placers.Count; i++)
+            {
+                // MUTANT_SURVIVES(equivalent, clause removed): this context's rows were re-derived just above, and doing
+                // it again reads the same tree.
+                if (placers.TryGet(i, out var other) && !ReferenceEquals(other, _ctx))
+                {
+                    ApplyStructuralVariantsOf(other, container, _structuralRows);
+                }
+            }
+        }
+
+        private static void ApplyStructuralVariantsOf(ReconcilerContext ctx, VisualElement container,
+            List<VisualElement?> slotOccupants)
+        {
+            if (ctx.StructuralVariants.Count == 0)
             {
                 return;
             }
@@ -3816,7 +3824,6 @@ namespace Velvet
             // invisible sibling (a filter bounds spacer).
             List<(VisualElement Element, int Index, List<(StyleStructuralKind Kind, int N, string[] Payloads,
                 int[] Declarations, long Priority)> Rules)>? ruled = null;
-            var slotOccupants = _structuralRows;
             slotOccupants.Clear();
             ChildListWrites.Rows(container, 0, int.MaxValue, slotOccupants);
             var count = slotOccupants.Count;
@@ -3827,9 +3834,9 @@ namespace Velvet
                 // against (ApplyStructuralVariantConfig keys by the real element / its own wrapper) — resolve
                 // through the z-registry first, then the ordinary wrapper unwrap (the slot may ALSO hold a
                 // shadow / clip-path WRAPPER either way).
-                var inner = ResolveWrapped(
-                    _ctx.ZLayerPlaceholders.TryGetValue(slotOccupant, out var real) ? real : slotOccupant);
-                if (_ctx.StructuralVariants.TryGetValue(inner, out var rules))
+                var inner = WrapperInfrastructure.InnerOf(ctx,
+                    ctx.ZLayerPlaceholders.TryGetValue(slotOccupant, out var real) ? real : slotOccupant);
+                if (ctx.StructuralVariants.TryGetValue(inner, out var rules))
                 {
                     (ruled ??= new()).Add((inner, slot, rules));
                 }
@@ -3841,7 +3848,7 @@ namespace Velvet
             }
             foreach (var (element, index, rules) in ruled)
             {
-                EvaluateStructural(_ctx, element, index, count, rules);
+                EvaluateStructural(ctx, element, index, count, rules);
             }
         }
 
