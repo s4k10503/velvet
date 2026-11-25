@@ -43,6 +43,9 @@ namespace Velvet.Tests
         private static StateUpdater<string> s_setTheme;
         private static StateUpdater<string> s_setHostValue;
         private static StateUpdater<HostTurn> s_setTurn;
+        private static StateUpdater<string> s_setParentValue;
+        private static StateUpdater<PortalRowsTurn> s_setPortalRowsTurn;
+        private static readonly Dictionary<string, VNode> s_portalRowLists = new();
         private static ComponentFiber s_abortingHost;
         private static bool s_fallbackShown;
         private static VisualElement s_portalTarget;
@@ -76,6 +79,9 @@ namespace Velvet.Tests
             s_setTheme = default;
             s_setHostValue = default;
             s_setTurn = default;
+            s_setParentValue = default;
+            s_setPortalRowsTurn = default;
+            s_portalRowLists.Clear();
             s_abortingHost = null;
             s_fallbackShown = false;
             s_setSuspenderOwn = default;
@@ -172,10 +178,14 @@ namespace Velvet.Tests
         [Test]
         public void Given_AHostRenderThatAbortsAfterItPatchedTheList_When_ARowRendersAlone_Then_ItReadsTheValueTheCommittedRenderPutAroundTheList()
         {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(AbortingHostRender, key: "host"), s_ignoringCaughtErrors);
+            // Arrange — the row was created under the first value, the host committed the second, and its render of
+            // the third aborts.
+            using var mounted = V.Mount(_root, V.Component(AbortingHostRender, "first", key: "host"),
+                s_ignoringCaughtErrors);
             RenderRange(mounted);
-            s_setTurn.Invoke(new HostTurn("second", Aborts: true, Tick: 0));
+            s_setTurn.Invoke(new HostTurn("second", Aborts: false, Tick: 0));
+            mounted.FlushStateForTest();
+            s_setTurn.Invoke(new HostTurn("third", Aborts: true, Tick: 0));
             mounted.FlushStateForTest();
             s_reading = null;
 
@@ -184,18 +194,22 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert — null where the pass did not abort or the host kept a tree other than the one from before it.
-            Assert.That(HostKeptTheValue("first") ? s_reading : null, Is.EqualTo("first"));
+            Assert.That(HostKeptTheValue("second") ? s_reading : null, Is.EqualTo("second"));
         }
 
         [Test]
         public void Given_ACommittedHostRenderThatDidNotReachTheList_When_ALaterOneChangesTheValueAroundItAndAborts_Then_ARowRenderingAloneReadsTheCommittedValue()
         {
-            // Arrange — the first update changes only a label beside the list, which hands back the same instance.
-            using var mounted = V.Mount(_root, V.Component(AbortingHostRender, key: "host"), s_ignoringCaughtErrors);
+            // Arrange — after the second value, an update changes only a label beside the list, which is handed back
+            // by instance.
+            using var mounted = V.Mount(_root, V.Component(AbortingHostRender, "first", key: "host"),
+                s_ignoringCaughtErrors);
             RenderRange(mounted);
-            s_setTurn.Invoke(new HostTurn("first", Aborts: false, Tick: 1));
+            s_setTurn.Invoke(new HostTurn("second", Aborts: false, Tick: 0));
             mounted.FlushStateForTest();
-            s_setTurn.Invoke(new HostTurn("second", Aborts: true, Tick: 1));
+            s_setTurn.Invoke(new HostTurn("second", Aborts: false, Tick: 1));
+            mounted.FlushStateForTest();
+            s_setTurn.Invoke(new HostTurn("third", Aborts: true, Tick: 1));
             mounted.FlushStateForTest();
             s_reading = null;
 
@@ -204,19 +218,22 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert — null where the pass did not abort or the host kept a tree other than the one from before it.
-            Assert.That(HostKeptTheValue("first") ? s_reading : null, Is.EqualTo("first"));
+            Assert.That(HostKeptTheValue("second") ? s_reading : null, Is.EqualTo("second"));
         }
 
         [Test]
         public void Given_AHostRenderedInlineWhoseCommittedRenderDidNotReachTheList_When_ALaterOneChangesTheValueAroundItAndAborts_Then_ARowRenderingAloneReadsTheCommittedValue()
         {
-            // Arrange — the host's first render is expanded in its parent's walk; its later ones are its own.
+            // Arrange — the parent's update renders the host in its walk with the second value; the host's own later
+            // updates change only a label beside the list, then the value, in a render that aborts.
             using var mounted = V.Mount(_root, V.Component(ParentOfAbortingHostRender, key: "parent"),
                 s_ignoringCaughtErrors);
             RenderRange(mounted);
-            s_setTurn.Invoke(new HostTurn("first", Aborts: false, Tick: 1));
+            s_setParentValue.Invoke("second");
             mounted.FlushStateForTest();
-            s_setTurn.Invoke(new HostTurn("second", Aborts: true, Tick: 1));
+            s_setTurn.Invoke(new HostTurn(null, Aborts: false, Tick: 1));
+            mounted.FlushStateForTest();
+            s_setTurn.Invoke(new HostTurn("third", Aborts: true, Tick: 1));
             mounted.FlushStateForTest();
             s_reading = null;
 
@@ -225,15 +242,18 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert — null where the pass did not abort or the host kept a tree other than the one from before it.
-            Assert.That(HostKeptTheValue("first") ? s_reading : null, Is.EqualTo("first"));
+            Assert.That(HostKeptTheValue("second") ? s_reading : null, Is.EqualTo("second"));
         }
 
         [Test]
         public void Given_AHostRenderThatSuspendsAfterItPatchedTheList_When_AScrollMountsARow_Then_TheRowReadsTheValueTheCommittedRenderPutAroundTheList()
         {
-            // Arrange — the Suspense above the host keeps the output the host committed, hidden.
+            // Arrange — the host commits the second value; its render of the third suspends, and the Suspense above
+            // renders it again in its own walk, which writes the host's output before the read suspends again.
             using var mounted = V.Mount(_root, V.Component(SuspenseOverSuspendingHostRender, key: "root"));
             s_setHostValue.Invoke("second");
+            mounted.FlushStateForTest();
+            s_setHostValue.Invoke("third");
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             var notArranged = s_hiddenHostFiber is not { IsOffscreen: true } ? "the host was not hidden" : null;
@@ -242,7 +262,32 @@ namespace Velvet.Tests
             RenderRange(mounted);
 
             // Assert — an arrangement that fell short reads as what it missed rather than as the row's value.
-            Assert.That(notArranged ?? s_reading, Is.EqualTo("first"));
+            Assert.That(notArranged ?? s_reading, Is.EqualTo("second"));
+        }
+
+        [Test]
+        public void Given_APortalInARowWhoseListWasPatchedOnlyForItsCapture_When_AnAbortedHostRenderRendersTheRow_Then_ThePortalsChildRenderingAloneReadsTheCommittedRowValue()
+        {
+            // Arrange — the renderer's second value reaches the row in a committed render, a change around the list
+            // patches it for its capture alone, and the renderer's third reaches the row in a render that aborts.
+            using var mounted = V.Mount(_root, V.Component(AbortingPortalRowsHostRender, key: "host"),
+                s_ignoringCaughtErrors);
+            RenderRange(mounted);
+            LayOutViewport(mounted);
+            s_setPortalRowsTurn.Invoke(new PortalRowsTurn("a1", "v2", Aborts: false));
+            mounted.FlushStateForTest();
+            s_setPortalRowsTurn.Invoke(new PortalRowsTurn("a2", "v2", Aborts: false));
+            mounted.FlushStateForTest();
+            s_setPortalRowsTurn.Invoke(new PortalRowsTurn("a2", "v3", Aborts: true));
+            mounted.FlushStateForTest();
+            s_reading = null;
+
+            // Act
+            s_setReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the pass did not abort or the host kept a tree other than the one from before it.
+            Assert.That(HostKeptTheValue("a2") ? s_reading : null, Is.EqualTo("v2"));
         }
 
         // GREEN_ON_BASE(characterization): the base skips the list the host hands back by instance.
@@ -487,18 +532,18 @@ namespace Velvet.Tests
         private static bool HostKeptTheValue(string value)
             => s_fallbackShown && (s_abortingHost?.PreviousTree?[0] as ContextProviderNode<string>)?.Value == value;
 
-        // The value the host puts around the list, whether a ref cleanup beside the list fails in this render's walk,
-        // and a label's text, which changes the output without touching the list.
+        // The value the host puts around the list in place of the one it is given, whether a ref cleanup beside the
+        // list fails in this render's walk, and a label's text, which changes the output without touching the list.
         private sealed record HostTurn(string Value, bool Aborts, int Tick);
 
         // The list comes ahead of the boundary in the walk, so it is patched before the ref cleanup fails.
         [Component(Compiler = false)]
-        private static VNode AbortingHostRender()
+        private static VNode AbortingHostRender(string given)
         {
             s_abortingHost = FiberAmbientStack.Current;
-            var (turn, setTurn) = Hooks.UseState(new HostTurn("first", Aborts: false, Tick: 0));
+            var (turn, setTurn) = Hooks.UseState(new HostTurn(null, Aborts: false, Tick: 0));
             s_setTurn = setTurn;
-            return V.Provider(s_theme, turn.Value, new VNode[]
+            return V.Provider(s_theme, turn.Value ?? given, new VNode[]
             {
                 s_shell,
                 V.Div(key: "boundary", children: new VNode[]
@@ -511,7 +556,40 @@ namespace Velvet.Tests
 
         [Component(Compiler = false)]
         private static VNode ParentOfAbortingHostRender()
-            => V.Div(name: "parent", children: new VNode[] { V.Component(AbortingHostRender, key: "host") });
+        {
+            var (value, setValue) = Hooks.UseState("first");
+            s_setParentValue = setValue;
+            return V.Div(name: "parent", children: new VNode[] { V.Component(AbortingHostRender, value, key: "host") });
+        }
+
+        // The value around the list, the one the renderer puts around each row's Portal, and whether a ref cleanup
+        // after the list fails in this render's walk.
+        private sealed record PortalRowsTurn(string Around, string Renderer, bool Aborts);
+
+        // One list per renderer value, so a turn that keeps it hands the list back by instance.
+        [Component(Compiler = false)]
+        private static VNode AbortingPortalRowsHostRender()
+        {
+            s_abortingHost = FiberAmbientStack.Current;
+            var (turn, setTurn) = Hooks.UseState(new PortalRowsTurn("a1", "v1", Aborts: false));
+            s_setPortalRowsTurn = setTurn;
+            var value = turn.Renderer;
+            if (!s_portalRowLists.TryGetValue(value, out var list))
+            {
+                s_portalRowLists[value] = list = RowList(item => V.Provider(s_theme, value, new VNode[]
+                {
+                    V.Portal(s_portalTarget, new VNode[] { V.Component(ReaderRender, key: item) }),
+                }));
+            }
+            return V.Provider(s_theme, turn.Around, new VNode[]
+            {
+                V.Div(name: "rows", children: new[] { list }),
+                V.Div(key: "boundary", children: new VNode[]
+                {
+                    V.Component(RefDroppingBoundary, turn.Aborts, key: "b"),
+                }),
+            });
+        }
 
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode RefDroppingBoundary(bool aborts)
@@ -546,15 +624,15 @@ namespace Velvet.Tests
             return V.Provider(s_theme, value, new VNode[]
             {
                 s_shell,
-                V.Div(key: "after", children: new VNode[] { V.Component(PendingPastFirstRender, value, key: "read") }),
+                V.Div(key: "after", children: new VNode[] { V.Component(PendingForTheThirdRender, value, key: "read") }),
             });
         }
 
-        // Reads at once for the first value and is pending for any other.
+        // Pending for the third value and read at once for any other.
         [Component(Compiler = false)]
-        private static VNode PendingPastFirstRender(string value)
+        private static VNode PendingForTheThirdRender(string value)
         {
-            var read = Hooks.Use<int>(_ => value == "first"
+            var read = Hooks.Use<int>(_ => value != "third"
                 ? VelvetTask.FromResult(0)
                 : (s_pendingRead = new VelvetTaskCompletionSource<int>()).Task, value);
             return V.Label(text: "read:" + read);

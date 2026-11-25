@@ -33,6 +33,7 @@ namespace Velvet
         internal static void DiscardRenderedWork(SuspenseRender render)
         {
             var fiber = render.Fiber;
+            DetachedHost.DiscardCapturesOf(fiber);
             fiber.PendingLayoutEffects?.Clear();
             TruncateTo(fiber.PendingInsertionEffects, render.InsertionBefore);
             TruncateTo(fiber.PendingEffects, render.PassiveBefore);

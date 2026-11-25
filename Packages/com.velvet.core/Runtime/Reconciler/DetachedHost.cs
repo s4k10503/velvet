@@ -20,14 +20,16 @@ namespace Velvet
 
         private static readonly ConditionalWeakTable<VisualElement, DetachedHost> s_ofPlaceholder = new();
 
-        // A capture names its render's output weakly, so a record holds neither its owner's output tree nor a
-        // Portal's children: a capture whose tree has been collected is dropped at the next capture or resolve,
-        // except the latest.
+        // A capture names its render's output weakly, or the capture of the enclosing host it was taken under, so a
+        // record holds neither its owner's output tree nor a Portal's children: a capture whose tree has been
+        // collected is dropped at the next capture or resolve, except the latest.
         private readonly List<DetachedHostCapture> _captures = new(2);
 
-        // The latest capture whose tree was its owner's committed output, which Resolve reads where no capture is of a
-        // render that is the owner's now: a render committed since that did not reach the node took none, and a later
-        // one taken by a render that was not committed is passed over.
+        // The latest capture named the owner's output by FiberRenderer's commit of it, or by an owner rendered inline
+        // holding it where the capture is taken, less one whose render a Suspense or an abandoned pass then discarded
+        // (DiscardCapturesOf). Resolve reads it where no capture is of a render that is the owner's now: a render
+        // committed since that did not reach the node took none. A fallback swap commits its tree elsewhere, so a
+        // capture its fallback takes is read only while that tree is the owner's.
         private DetachedHostCapture? _committed;
 
         // Tops is read only where a list's rows render outside a pass (Reconciler.BeginDetachedItemScope), so a Portal's
@@ -35,8 +37,6 @@ namespace Velvet
         private readonly bool _takesTops;
 
         private static readonly List<KeyValuePair<object, object>> s_pushed = new();
-        private static readonly Predicate<KeyValuePair<object, object>> s_travelsOnlyInStamps =
-            MotionContext.TravelsOnlyInStamps;
 
         internal DetachedHost(ComponentFiber? owner, bool takesTops)
         {
@@ -94,7 +94,7 @@ namespace Velvet
             // would pass its rows' nodes and those captures off as the committed render's.
             s_pushed.Clear();
             stack.CollectPushedInFrame(s_pushed);
-            s_pushed.RemoveAll(s_travelsOnlyInStamps);
+            s_pushed.RemoveAll(MotionContext.TravelsOnlyInStamps);
             var capture = new DetachedHostCapture(
                 this, tree, frame.EnclosingCapture,
                 s_pushed.Count == 0 ? Array.Empty<KeyValuePair<object, object>>() : s_pushed.ToArray(),
@@ -109,9 +109,17 @@ namespace Velvet
             DropDeadCaptures();
             if (_captures.Count > KeptCaptures) _captures.RemoveAt(0);
             if (capture.EnclosingCapture != null || Owner == null) return;
-            // An owner rendered inline in a walk holds the output that walk expands before it reaches the node.
-            if (ReferenceEquals(capture.Tree, Owner.PreviousTree)) _committed = capture;
-            else (Owner.CapturesAwaitingCommit ??= new List<DetachedHostCapture>(1)).Add(capture);
+            // An owner rendered inline in a walk holds the output that walk expands before it reaches the node. It
+            // waits all the same, for a Suspense that discards that render (DiscardCapturesOf).
+            if (ReferenceEquals(capture.Tree, Owner.PreviousTree)) MarkCommitted(capture);
+            (Owner.CapturesAwaitingCommit ??= new List<DetachedHostCapture>(1)).Add(capture);
+        }
+
+        private void MarkCommitted(DetachedHostCapture capture)
+        {
+            capture.CommittedBefore = _committed;
+            capture.WasCommitted = true;
+            _committed = capture;
         }
 
         // Where FiberRenderer makes tree fiber's output: the latest capture of each host that names it becomes that
@@ -122,12 +130,29 @@ namespace Velvet
             if (fiber.CapturesAwaitingCommit is not { Count: > 0 } captures) return;
             foreach (var capture in captures)
             {
-                if (ReferenceEquals(capture.Tree, tree)) capture.Host._committed = capture;
+                if (ReferenceEquals(capture.Tree, tree)) capture.Host.MarkCommitted(capture);
             }
             captures.Clear();
         }
 
-        // The latest capture of a render that is the owner's now, else the latest committed one, else the latest.
+        // Where a render of fiber is discarded (FiberHookCommit.DiscardRenderedWork): an owner rendered inline holds that
+        // render's output as its PreviousTree, so its captures read as the owner's own until they are marked, and each
+        // host's committed one goes back to the one before. Newest first, so two of one host's go back past both.
+        internal static void DiscardCapturesOf(ComponentFiber fiber)
+        {
+            if (fiber.CapturesAwaitingCommit is not { Count: > 0 } captures) return;
+            for (var i = captures.Count - 1; i >= 0; i--)
+            {
+                var capture = captures[i];
+                capture.Discarded = true;
+                capture.WasCommitted = false;
+                if (ReferenceEquals(capture.Host._committed, capture)) capture.Host._committed = capture.CommittedBefore;
+            }
+            captures.Clear();
+        }
+
+        // The latest capture of a render that is the owner's now, else the latest committed one, else the latest taken
+        // under an enclosing host's capture that was committed, else the latest not discarded, else the latest.
         internal DetachedHostCapture? Resolve()
         {
             DropDeadCaptures();
@@ -135,7 +160,16 @@ namespace Velvet
             {
                 if (IsCommitted(_captures[i])) return _captures[i];
             }
-            return _committed ?? (_captures.Count > 0 ? _captures[_captures.Count - 1] : null);
+            if (_committed != null) return _committed;
+            for (var i = _captures.Count - 1; i >= 0; i--)
+            {
+                if (_captures[i].EnclosingCapture is { WasCommitted: true }) return _captures[i];
+            }
+            for (var i = _captures.Count - 1; i >= 0; i--)
+            {
+                if (!_captures[i].Discarded) return _captures[i];
+            }
+            return _captures.Count > 0 ? _captures[_captures.Count - 1] : null;
         }
 
         internal bool Holds(DetachedHostCapture capture)
@@ -159,6 +193,7 @@ namespace Velvet
         // host's drain or range is committed while that host still resolves to the capture it was taken under.
         private bool IsCommitted(DetachedHostCapture capture)
         {
+            if (capture.Discarded) return false;
             if (capture.EnclosingCapture is { } enclosing)
             {
                 return ReferenceEquals(enclosing.Host.Resolve(), enclosing);
@@ -183,6 +218,13 @@ namespace Velvet
         // The top value of every context where the capture was taken, less the orchestration, which a range rendered
         // under this capture pushes under everything else, as FiberContextSpine pushes a stamp's. Null for a Portal's.
         internal readonly List<KeyValuePair<object, object>>? Tops;
+
+        // Set where its host takes it as the committed one, and cleared where its render is then discarded; what that
+        // host's committed one was before, for the discard to go back to. An enclosed capture is never set: one is read
+        // as committed while the capture it was taken under is.
+        internal bool WasCommitted;
+        internal DetachedHostCapture? CommittedBefore;
+        internal bool Discarded;
 
         internal DetachedHostCapture(
             DetachedHost host, VNode?[]? tree, DetachedHostCapture? enclosingCapture,
