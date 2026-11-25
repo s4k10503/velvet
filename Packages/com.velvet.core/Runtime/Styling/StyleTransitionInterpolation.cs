@@ -48,6 +48,30 @@ namespace Velvet
             => property == s_visibility || property == s_positionX || property == s_positionY;
 
         /// <summary>
+        /// The start time and end value of the transition UI Toolkit runs of the element's property; null where none runs
+        /// or a member does not resolve.
+        /// </summary>
+        internal static (double Start, object? End)? Running(VisualElement element, StylePropertyName property)
+        {
+            try
+            {
+                if (Locate(element, property) is not { } entry || !entry.TryLocate(out var running, out var index))
+                {
+                    return null;
+                }
+                var set = entry.Set;
+                var timing = ((Array)set.Timings.GetValue(running)!).GetValue(index)!;
+                var style = ((Array)set.Styles.GetValue(running)!).GetValue(index)!;
+                return ((double)set.StartTime.GetValue(timing)!, set.End.GetValue(style));
+            }
+            catch (Exception exception) when (exception is TargetInvocationException or TargetException
+                or ArgumentException or InvalidCastException or MemberAccessException or NotSupportedException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Has the transition UI Toolkit runs of the element's property, one <see cref="Interpolates"/> names, show CSS's
         /// value from the frame on screen on. A transition a member that does not resolve keeps from being read runs as it
         /// started.
@@ -384,9 +408,10 @@ namespace Velvet
             shown.Flip(value, now);
         }
 
-        private static double Now(VisualElement element)
-            => element.panel != null && s_system?.GetValue(element.panel) is { } system
-                ? (double)s_systemTime!.GetValue(system)!
+        // UI Toolkit's time for the panel's last animation update; NaN off a panel or where a member does not resolve.
+        internal static double Now(VisualElement element)
+            => element.panel != null && s_systemTime != null && s_system?.GetValue(element.panel) is { } system
+                ? (double)s_systemTime.GetValue(system)!
                 : double.NaN;
 
         // The style change of the nearest ancestor whose own visibility transition changed what it shows to value in the

@@ -1,7 +1,6 @@
 01c238dbdd6a	Runtime/Styling/InputModality.cs,Runtime/Styling/LayoutIdLook.cs
 023c497d58e8	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 035c4cad19e4	Runtime/Component/ComponentPropsComparer.cs,Runtime/Component/ObjectIs.cs,Runtime/Reconciler/FiberNodePatcher.cs,Runtime/Reconciler/FiberZLayerCoordinator.cs,Runtime/Reconciler/ReconcilerContext.cs,Runtime/Styling/BackdropFilterSteps.cs,Runtime/Styling/BorderPreflight.cs,Runtime/Styling/MotionPaintInterpolation.cs,Runtime/Styling/MotionSlotContext.cs,Runtime/Styling/StyleArbitraryValueResolver.cs,Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleCompositeRejection.cs,Runtime/Styling/StyleCompoundVariantMatcher.cs,Runtime/Styling/StyleFilterTransitionDriver.cs,Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleResponsiveScope.cs,Runtime/Styling/StyleRuleOrder.cs,Runtime/Styling/StyleTextBalanceManipulator.cs,Runtime/Styling/StyleThemeClass.cs,Runtime/Styling/StyleThemeTokens.cs,Runtime/Styling/TextLineBreaker.cs,Runtime/Styling/VelvetFilters.cs
-0395ecabf356	Runtime/Styling/RunningStyleTransition.cs,Runtime/Styling/StyleTransitionBehavior.cs
 03a68c44d3a7	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 03b91cdc184d	Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleNamedTextSize.cs
 045c8f345980	Runtime/AssemblyInfo.cs,TestUtilities/AssemblyInfo.cs
@@ -74,7 +73,6 @@
 54d3bb3c85aa	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 5566fb485951	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 55a910e1b222	Runtime/Reconciler/FiberElementFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
-56dd323f605b	Runtime/Styling/RunningStyleTransition.cs,Runtime/Styling/StyleCascade.cs,Runtime/Styling/StyleTransitionBehavior.cs
 571b6482684a	CodeGen/CompilerWeaver.cs,CodeGen/MetadataRegistrationWeaver.cs
 573181af3eab	Runtime/AssemblyInfo.cs,TestUtilities/AssemblyInfo.cs
 57e78c180ae9	Runtime/Styling/BackdropRenderer.cs,Runtime/Styling/OutlineHosting.cs
@@ -156,7 +154,7 @@ b4ea0c6ca69d	Runtime/Styling/StyleStructuralVariantClass.cs,Runtime/Styling/Styl
 b7d1b2a93e98	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 b8fec61b1274	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 b96e63847524	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
-b9ad3c4c8fc8	Runtime/Styling/RunningStyleTransition.cs,Runtime/Styling/StyleCascade.cs,Runtime/Styling/StyleTransitionBehavior.cs
+b9ad3c4c8fc8	Runtime/Styling/RunningStyleTransition.cs,Runtime/Styling/StyleCascade.cs
 b9bdeac538e9	Runtime/Reconciler/FiberSliderKeyboard.cs,Runtime/Styling/StyleArbitraryValueResolver.cs
 b9c523114335	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
 bae03dca3a92	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleTextItemManipulator.cs

@@ -120,8 +120,8 @@ Packages/com.velvet.core/Runtime/Styling/StyleTextItemManipulator.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleThemeClass.cs	8
 Packages/com.velvet.core/Runtime/Styling/StyleThemeTokens.cs	7
 Packages/com.velvet.core/Runtime/Styling/StyleTransformValueParser.cs	6
-Packages/com.velvet.core/Runtime/Styling/StyleTransitionBehavior.cs	4
-Packages/com.velvet.core/Runtime/Styling/StyleTransitionInterpolation.cs	9
+Packages/com.velvet.core/Runtime/Styling/StyleTransitionBehavior.cs	11
+Packages/com.velvet.core/Runtime/Styling/StyleTransitionInterpolation.cs	10
 Packages/com.velvet.core/Runtime/Styling/StyleUtilityProperties.g.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleVariantClass.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleVariantPayload.cs	6

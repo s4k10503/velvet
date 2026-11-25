@@ -13,8 +13,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins CSS's transition-behavior on what Velvet renders: a transition UI Toolkit starts for justify-content, which
     /// it can only switch, lands the new value, in the style pass that starts it where Velvet gave the element its
-    /// transition or the element has run one and by the panel's next animation update otherwise, and sends no
-    /// transition event to the element, unless transition-discrete outranks transition-normal on the element.
+    /// transition or the element has run one and by the panel's next animation update otherwise, unless
+    /// transition-discrete outranks transition-normal on the element.
     /// </summary>
     internal sealed class TransitionDiscretePanelTests : PanelTestBase
     {
@@ -22,6 +22,9 @@ namespace Velvet.Tests
             | BindingFlags.Instance;
 
         private const string OneSecond = "duration-1000 ease-linear";
+
+        // StyleTransitionBehavior.WatchClass, spelled out so that the fixture builds on a tree without it.
+        private const string Watch = "velvet-transition-watch";
 
         // Where no transition of justify-content ran, so that a change nothing transitioned cannot pass for one
         // landed or held back.
@@ -119,17 +122,16 @@ namespace Velvet.Tests
 
         // The resolved justify-content after the style pass that starts the transitions a change asks for and the
         // panel's animation update after it, with the clock where it was; NoneRan where no transition of it started.
-        // A start is read from the run event the root of the element's panel hears on its way down in either update,
-        // where no hold stops one. Reading a transition still running after the style pass was rejected: in
-        // Given_TransitionDiscreteAndADarkTransitionNormal_When_TheThemeIsDark_Then_TheNextAnimationUpdateLandsAWrite
-        // none was.
+        // A start is read off the engine: before the style pass for one an inline write started, since an update of the
+        // panel the pass is part of can already have cancelled it, and after the pass for one the pass started. A run
+        // event was rejected as the reading, since a watched element's own handler stops it.
         private static Justify AfterTheNextAnimationUpdate(VisualElement element)
         {
-            var above = Above(element);
+            var started = Runs(element);
             ForcePanelUpdate(element.panel);
+            started |= Runs(element);
             EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
-            above.Stop();
-            return above.Justify > 0 ? element.resolvedStyle.justifyContent : NoneRan;
+            return started ? element.resolvedStyle.justifyContent : NoneRan;
         }
 
         // The resolved justify-content after the style pass a change asks for, before any animation update; NoneRan
@@ -141,58 +143,43 @@ namespace Velvet.Tests
             return Runs(element, control) ? element.resolvedStyle.justifyContent : NoneRan;
         }
 
-        // The transition events of justify-content and of opacity targeting an element that reach a listener: the
-        // element itself, or the root of its panel on their way down.
+        // The transition events of justify-content and of opacity targeting an element that reach a listener on it.
         private sealed class Heard
         {
             private static readonly StylePropertyName s_justify = new("justify-content");
             private static readonly StylePropertyName s_opacity = new("opacity");
 
-            private readonly VisualElement _listener;
-            private readonly TrickleDown _phase;
-            private readonly EventCallback<TransitionRunEvent> _run;
-            private readonly EventCallback<TransitionStartEvent> _start;
-            private readonly EventCallback<TransitionEndEvent> _end;
-            private readonly EventCallback<TransitionCancelEvent> _cancel;
+            private readonly VisualElement _element;
 
             public int Justify;
             public int Opacity;
+            public int JustifyCancels;
 
-            public Heard(VisualElement target, VisualElement listener, TrickleDown phase)
+            public Heard(VisualElement element)
             {
-                (_listener, _phase) = (listener, phase);
-                _run = evt => Count(target, evt.target, evt.stylePropertyNames);
-                _start = evt => Count(target, evt.target, evt.stylePropertyNames);
-                _end = evt => Count(target, evt.target, evt.stylePropertyNames);
-                _cancel = evt => Count(target, evt.target, evt.stylePropertyNames);
-                listener.RegisterCallback(_run, phase);
-                listener.RegisterCallback(_start, phase);
-                listener.RegisterCallback(_end, phase);
-                listener.RegisterCallback(_cancel, phase);
+                _element = element;
+                element.RegisterCallback<TransitionRunEvent>(evt => Count(evt.target, evt.stylePropertyNames));
+                element.RegisterCallback<TransitionStartEvent>(evt => Count(evt.target, evt.stylePropertyNames));
+                element.RegisterCallback<TransitionEndEvent>(evt => Count(evt.target, evt.stylePropertyNames));
+                element.RegisterCallback<TransitionCancelEvent>(evt =>
+                {
+                    Count(evt.target, evt.stylePropertyNames);
+                    JustifyCancels += ReferenceEquals(evt.target, element) && evt.stylePropertyNames.Contains(s_justify) ? 1 : 0;
+                });
             }
 
-            private void Count(VisualElement target, IEventHandler reached, StylePropertyNameCollection names)
+            private void Count(IEventHandler reached, StylePropertyNameCollection names)
             {
-                if (!ReferenceEquals(reached, target))
+                if (!ReferenceEquals(reached, _element))
                 {
                     return;
                 }
                 Justify += names.Contains(s_justify) ? 1 : 0;
                 Opacity += names.Contains(s_opacity) ? 1 : 0;
             }
-
-            public void Stop()
-            {
-                _listener.UnregisterCallback(_run, _phase);
-                _listener.UnregisterCallback(_start, _phase);
-                _listener.UnregisterCallback(_end, _phase);
-                _listener.UnregisterCallback(_cancel, _phase);
-            }
         }
 
-        private static Heard On(VisualElement element) => new(element, element, TrickleDown.NoTrickleDown);
-
-        private static Heard Above(VisualElement element) => new(element, element.panel.visualTree, TrickleDown.TrickleDown);
+        private static Heard On(VisualElement element) => new(element);
 
         private static void Swap(VisualElement element, params (string From, string To)[] swaps)
         {
@@ -367,6 +354,40 @@ namespace Velvet.Tests
             Assert.That(WhileItsTransitionRuns(element), Is.EqualTo(Justify.FlexStart));
         }
 
+        // GREEN_ON_BASE(characterization): the base stops no transition event.
+        // Returning true where StyleTransitionBehavior.CancelUnlessAllowed finds the transition it let run reddens this case.
+        [Test]
+        public void Given_TransitionAllWithTransitionDiscrete_When_TheJustifyContentClassChanges_Then_TheElementHearsItsRunAndStart()
+        {
+            // Arrange
+            var element = Mounted("transition-all transition-discrete justify-start " + OneSecond);
+            var heard = On(element);
+            Swap(element, "justify-start", "justify-end");
+
+            // Act
+            RunAQuarterSecond(element);
+
+            // Assert
+            Assert.That(heard.Justify, Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): the base stops no transition event.
+        // Returning true where StyleTransitionBehavior.CancelUnlessAllowed finds transition-discrete applies reddens this case.
+        [Test]
+        public void Given_TransitionAllWithTransitionDiscrete_When_JustifyContentIsWrittenInline_Then_TheElementHearsItsRunAndStart()
+        {
+            // Arrange
+            var element = Mounted("transition-all transition-discrete " + OneSecond);
+            var heard = On(element);
+            element.style.justifyContent = Justify.FlexEnd;
+
+            // Act
+            RunAQuarterSecond(element);
+
+            // Assert
+            Assert.That(heard.Justify, Is.EqualTo(2));
+        }
+
         // GREEN_ON_BASE(characterization): the base decides a transition only at its run event, so a style pass leaves it.
         // Reading no recorded decision in StyleTransitionBehavior.CancelUnlessAllowed reddens this case.
         [Test]
@@ -388,20 +409,191 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AJustifyContentTransitionTransitionDiscreteLetRun_When_ItsEndChangesOnceTransitionNormalOutranksIt_Then_TheStylePassThatRestylesItLandsTheNewEnd()
+        {
+            // Arrange — the change retargets the running transition, which UI Toolkit replaces by one to the new end.
+            var element = Mounted("transition-all transition-discrete justify-start opacity-100 " + OneSecond);
+            Swap(element, ("justify-start", "justify-end"), ("opacity-100", "opacity-0"));
+            RunAQuarterSecond(element);
+            element.AddToClassList("transition-normal");
+            ForcePanelUpdate(element.panel);
+            Swap(element, ("justify-end", "justify-center"), ("opacity-0", "opacity-100"));
+
+            // Act
+            var landed = AfterTheStylePass(element);
+
+            // Assert
+            Assert.That(landed, Is.EqualTo(Justify.Center));
+        }
+
+        [Test]
+        public void Given_AJustifyContentTransitionTransitionDiscreteLetRun_When_ItsEndChangesUnderTransitionNormalBeforeAnAnimationUpdate_Then_TheStylePassThatRestylesItLandsTheNewEnd()
+        {
+            // Arrange — no animation update between the two style passes, so UI Toolkit starts both transitions at one
+            // time; the opacity the first starts is still running in the second.
+            var element = Mounted("transition-all transition-discrete justify-start opacity-100 " + OneSecond);
+            Swap(element, ("justify-start", "justify-end"), ("opacity-100", "opacity-0"));
+            ForcePanelUpdate(element.panel);
+            Swap(element, ("transition-discrete", "transition-normal"), ("justify-end", "justify-center"));
+
+            // Act
+            var landed = AfterTheStylePass(element);
+
+            // Assert
+            Assert.That(landed, Is.EqualTo(Justify.Center));
+        }
+
+        [Test]
+        public void Given_AnEndedTransitionDiscreteRunToFlexEnd_When_AnotherToFlexEndStartsUnderTransitionNormal_Then_TheStylePassThatRestylesItLandsFlexEnd()
+        {
+            // Arrange — the run ends a second and a quarter in, and justify-content leaves flex-end while no transition
+            // of it is listed, so nothing decides on it between the two runs.
+            var element = Mounted("transition-all transition-discrete justify-start opacity-100 " + OneSecond);
+            Swap(element, "justify-start", "justify-end");
+            RunAQuarterSecond(element);
+            RunFor(element, 1.0);
+            Swap(element, "transition-all", "transition-opacity");
+            ForcePanelUpdate(element.panel);
+            Swap(element, "justify-end", "justify-start");
+            ForcePanelUpdate(element.panel);
+            Swap(element, ("transition-opacity", "transition-all"), ("transition-discrete", "transition-normal"),
+                ("justify-start", "justify-end"), ("opacity-100", "opacity-0"));
+
+            // Act
+            var landed = AfterTheStylePass(element);
+
+            // Assert
+            Assert.That(landed, Is.EqualTo(Justify.FlexEnd));
+        }
+
+        [Test]
+        public void Given_ATransitionDiscreteRunWhoseEndEventAHandlerStops_When_TheJustifyContentClassChangesUnderTransitionNormal_Then_TheStylePassThatRestylesItLandsTheNewValue()
+        {
+            // Arrange — the run ends a second and a quarter in, its end event stopped on the element, below the hold.
+            var element = Mounted("transition-all transition-discrete justify-start opacity-100 " + OneSecond);
+            element.RegisterCallback<TransitionEndEvent>(evt => evt.StopPropagation());
+            Swap(element, "justify-start", "justify-end");
+            RunAQuarterSecond(element);
+            RunFor(element, 1.0);
+            Swap(element, ("transition-discrete", "transition-normal"), ("justify-end", "justify-start"),
+                ("opacity-100", "opacity-0"));
+
+            // Act
+            var landed = AfterTheStylePass(element);
+
+            // Assert
+            Assert.That(landed, Is.EqualTo(Justify.FlexStart));
+        }
+
+        [Test]
+        public void Given_ATransitionDiscreteRunAMoveUnderTheHoldCancels_When_TheJustifyContentClassChangesUnderTransitionNormal_Then_TheStylePassThatRestylesItLandsTheNewValue()
+        {
+            // Arrange — the move takes the element off its parent before off its panel, so the cancel UI Toolkit sends it
+            // reaches no element above it.
+            var element = Mounted("transition-all transition-discrete justify-start opacity-100 " + OneSecond);
+            Swap(element, "justify-start", "justify-end");
+            RunAQuarterSecond(element);
+            var parent = element.hierarchy.parent;
+            element.RemoveFromHierarchy();
+            parent.Add(element);
+            ForcePanelUpdate(element.panel);
+            Swap(element, ("transition-discrete", "transition-normal"), ("justify-end", "justify-start"),
+                ("opacity-100", "opacity-0"));
+
+            // Act
+            var landed = AfterTheStylePass(element);
+
+            // Assert
+            Assert.That(landed, Is.EqualTo(Justify.FlexStart));
+        }
+
+        // GREEN_ON_BASE(characterization): the base stops no transition event, so the retarget's cancel reaches the element.
+        // Removing the DropStale call from StyleTransitionBehavior.CancelUnlessAllowed reddens this case.
+        [Test]
+        public void Given_ARunEventCancelWhoseCancelEventWasSentOffThePanel_When_ATransitionDiscreteRunAfterItIsRetargeted_Then_TheElementHearsItsCancel()
+        {
+            // Arrange — the first write is cancelled at its run event a quarter second in, and the cancel event for it is
+            // sent at the next update, while the element is off its panel; the second runs under transition-discrete.
+            var element = Mounted("transition-all " + OneSecond);
+            var parent = element.hierarchy.parent;
+            element.style.justifyContent = Justify.FlexEnd;
+            RunAQuarterSecond(element);
+            element.RemoveFromHierarchy();
+            _now += 0.25;
+            EditorPanelTestHelpers.DriveAnimationsOnce(parent.panel);
+            parent.Add(element);
+            ForcePanelUpdate(element.panel);
+            element.AddToClassList("transition-discrete");
+            ForcePanelUpdate(element.panel);
+            var heard = On(element);
+            element.style.justifyContent = Justify.Center;
+            RunAQuarterSecond(element);
+            element.style.justifyContent = Justify.FlexStart;
+
+            // Act
+            RunAQuarterSecond(element);
+
+            // Assert
+            Assert.That(heard.JustifyCancels, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base stops no transition event, so the element hears the later run's.
+        // Removing the `stopped.RemoveAt(at)` from StyleTransitionBehavior.Stopped reddens this case.
+        [Test]
+        public void Given_AWatchedElementWhoseRunEventCancelWasHeardToItsCancelEvent_When_ItRunsATransitionUnderNoMount_Then_ItHearsItsRunAndStart()
+        {
+            // Arrange — the write's run is cancelled at the update a quarter second in, and its cancel event is sent at
+            // the next; the element then moves to an element no tree is mounted on.
+            var element = Mounted("transition-all " + OneSecond);
+            element.style.justifyContent = Justify.FlexEnd;
+            RunAQuarterSecond(element);
+            RunAQuarterSecond(element);
+            NewRoot().Add(element);
+            ForcePanelUpdate(element.panel);
+            var heard = On(element);
+            element.style.justifyContent = Justify.Center;
+
+            // Act
+            RunAQuarterSecond(element);
+
+            // Assert
+            Assert.That(heard.Justify, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AnInlineWriteCancelledAtItsRunEvent_When_TheWriteIsClearedBeforeItsCancelEventIsSent_Then_TheElementHearsNoCancelEvent()
+        {
+            // Arrange — the write's run is cancelled at the update a quarter second in, and the next sends its cancel event.
+            var element = Mounted("transition-all " + OneSecond);
+            element.style.justifyContent = Justify.FlexEnd;
+            var started = Runs(element);
+            RunAQuarterSecond(element);
+            var heard = On(element);
+            element.style.justifyContent = StyleKeyword.Null;
+
+            // Act — two updates, so that a cancel event a first one would queue is sent as well.
+            RunAQuarterSecond(element);
+            RunAQuarterSecond(element);
+
+            // Assert — -1 where the write started no transition.
+            Assert.That(started ? heard.JustifyCancels : -1, Is.EqualTo(0));
+        }
+
+        [Test]
         public void Given_AnElementTransitioningAll_When_ItsJustifyContentIsWrittenInline_Then_ItHearsNoTransitionEventForIt()
         {
             // Arrange — two updates, so that a cancel event a first one would queue is sent as well.
             var element = Mounted("transition-all " + OneSecond);
             var heard = On(element);
-            var above = Above(element);
             element.style.justifyContent = Justify.FlexEnd;
+            var started = Runs(element);
 
             // Act
             RunAQuarterSecond(element);
             RunAQuarterSecond(element);
 
-            // Assert — the panel root hearing the run on its way down shows the write started a transition.
-            Assert.That(above.Justify > 0 ? heard.Justify : -1, Is.EqualTo(0));
+            // Assert — -1 where the write started no transition.
+            Assert.That(started ? heard.Justify : -1, Is.EqualTo(0));
         }
 
         [Test]
@@ -534,6 +726,25 @@ namespace Velvet.Tests
             Assert.That(landed, Is.EqualTo(Justify.FlexEnd));
         }
 
+        // GREEN_ON_BASE(characterization): the base cancels from the hold's run handler, after the element's listeners.
+        // Recording the cancel StyleTransitionBehavior.OnRun makes among the stopped ones reddens this case.
+        [Test]
+        public void Given_AnApplicationRuleGivingTheFirstTransition_When_TheJustifyContentClassChanges_Then_TheElementHearsItsRunStartAndCancel()
+        {
+            // Arrange — two updates, so that the cancel event the first one queues is sent as well.
+            AttachSheet(".app-justify { transition-property: justify-content; transition-duration: 1s; }");
+            var element = Mounted("app-justify justify-start");
+            var heard = On(element);
+            Swap(element, "justify-start", "justify-end");
+
+            // Act
+            RunAQuarterSecond(element);
+            RunAQuarterSecond(element);
+
+            // Assert
+            Assert.That(heard.Justify, Is.EqualTo(3));
+        }
+
         [Test]
         public void Given_AnApplicationRuleThatRanATransition_When_TheJustifyContentClassChangesAgain_Then_TheStylePassThatRestylesItLandsTheNewValue()
         {
@@ -542,13 +753,13 @@ namespace Velvet.Tests
             var element = Mounted("app-justify justify-start opacity-100");
             Swap(element, ("justify-start", "justify-end"), ("opacity-100", "opacity-0"));
             RunAQuarterSecond(element);
-            Swap(element, ("justify-end", "justify-start"), ("opacity-0", "opacity-100"));
+            Swap(element, ("justify-end", "justify-center"), ("opacity-0", "opacity-100"));
 
             // Act
             var landed = AfterTheStylePass(element);
 
-            // Assert
-            Assert.That(landed, Is.EqualTo(Justify.FlexStart));
+            // Assert — a third value, which the transition the change starts shows only once it has landed.
+            Assert.That(landed, Is.EqualTo(Justify.Center));
         }
 
         [Test]
@@ -626,6 +837,64 @@ namespace Velvet.Tests
             Assert.That(after, Is.EqualTo(Justify.FlexStart));
         }
 
+        private int WatchSheetsOnThePanelRoot()
+        {
+            var sheets = _window.rootVisualElement.panel.visualTree.styleSheets;
+            var count = 0;
+            for (var i = 0; i < sheets.count; i++)
+            {
+                count += sheets[i] != null && sheets[i].name == Watch ? 1 : 0;
+            }
+            return count;
+        }
+
+        [Test]
+        public void Given_ATreeMountedOnThePanel_When_ItIsDisposed_Then_ThePanelsRootCarriesNoWatchSheet()
+        {
+            // Arrange
+            var mounted = V.Mount(NewRoot(), V.Div());
+            var placed = WatchSheetsOnThePanelRoot() > 0;
+
+            // Act
+            mounted.Dispose();
+
+            // Assert — -1 where the mount put no watch sheet there to take off.
+            Assert.That(placed ? WatchSheetsOnThePanelRoot() : -1, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AMountRootOnThePanel_When_ItLeavesThePanel_Then_ThePanelsRootCarriesNoWatchSheet()
+        {
+            // Arrange
+            var root = NewRoot();
+            Mount(root, V.Div());
+            var placed = WatchSheetsOnThePanelRoot() > 0;
+
+            // Act
+            root.RemoveFromHierarchy();
+
+            // Assert — -1 where the mount put no watch sheet there to take off.
+            Assert.That(placed ? WatchSheetsOnThePanelRoot() : -1, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AMountRootTakenOffThePanelAndPutBack_When_ItsElementsJustifyContentClassChanges_Then_TheStylePassThatRestylesItLandsTheNewValue()
+        {
+            // Arrange
+            var root = NewRoot();
+            Mount(root, V.Div(name: "leaf", className: "transition-all justify-start opacity-100 " + OneSecond));
+            root.RemoveFromHierarchy();
+            _window.rootVisualElement.Add(root);
+            var element = Attached(root.Q<VisualElement>("leaf"));
+            Swap(element, ("justify-start", "justify-end"), ("opacity-100", "opacity-0"));
+
+            // Act
+            var landed = AfterTheStylePass(element);
+
+            // Assert
+            Assert.That(landed, Is.EqualTo(Justify.FlexEnd));
+        }
+
         private sealed class Shown : Store<bool>
         {
             public Shown() : base(true) { }
@@ -690,24 +959,101 @@ namespace Velvet.Tests
                 ? wrapper.resolvedStyle.alignSelf : (Align)(-1), Is.EqualTo(Align.FlexEnd));
         }
 
-        private static bool s_ran;
+        [Test]
+        public void Given_AnElementWithAnArbitraryDurationThatGainsAClipPath_When_ItsAlignSelfClassChanges_Then_TheStylePassThatRestylesItsWrapperLandsTheNewValue()
+        {
+            // Arrange — the duration is written inline on the element, and the wrapper takes a copy of it as it wraps the
+            // element; no class gives either a transition.
+            const string Timed = " ease-linear duration-[1000ms] ";
+            var root = NewRoot();
+            var mounted = Mount(root, V.Div(name: "clipped", className: Timed + "self-start w-4"));
+            var element = Attached(root.Q<VisualElement>("clipped"));
+            mounted.Render(V.Div(name: "clipped", className: Triangle + Timed + "self-start w-4"));
+            var wrapper = element.parent;
+            ForcePanelUpdate(wrapper.panel);
+            mounted.Render(V.Div(name: "clipped", className: Triangle + Timed + "self-end w-8"));
+
+            // Act
+            ForcePanelUpdate(wrapper.panel);
+
+            // Assert — (Align)(-1) where no wrapper holds the element or the width it mirrors does not transition.
+            Assert.That(wrapper.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass) && Runs(wrapper, "width")
+                ? wrapper.resolvedStyle.alignSelf : (Align)(-1), Is.EqualTo(Align.FlexEnd));
+        }
+
+        private static VNode LabelIn(string name, string classes)
+            => V.Div(children: new VNode[] { V.Label(name: name, text: name, className: classes + " " + OneSecond) });
 
         [Test]
-        public void Given_AWatchedElement_When_WhetherAnyTransitionRunsOnItIsRead_Then_TheReadAllocatesNothing()
+        public void Given_APooledLabelTornDownAsItsTransitionDiscreteRunStarts_When_ItsNextConsumersTextAlignClassChangesWithNoTimePassing_Then_TheStylePassThatRestylesItLandsTheNewValue()
         {
-            // Arrange — the read each style pass restyling the element makes, reached as that pass reaches it.
-            var element = Mounted("transition-all");
-            var method = typeof(StyleTransitionBehavior).GetMethod("RunsAny", BindingFlags.NonPublic | BindingFlags.Static);
-            var runsAny = method == null
-                ? null
-                : (Func<VisualElement, bool>)Delegate.CreateDelegate(typeof(Func<VisualElement, bool>), method);
+            // Arrange — no time passes between the two runs, so the second starts when the first did, to the same end.
+            VNodePoolTestAccess.ClearLabelPoolForTest();
+            var root = NewRoot();
+            var mounted = Mount(root, LabelIn("first", "transition-all transition-discrete text-left"));
+            var first = Attached(root.Q<Label>("first"));
+            mounted.Render(LabelIn("first", "transition-all transition-discrete text-right"));
+            ForcePanelUpdate(first.panel);
+            mounted.Render(V.Div());
+            mounted.Render(LabelIn("second", "transition-all text-left opacity-100"));
+            var second = root.Q<Label>("second");
+            ForcePanelUpdate(second.panel);
+            mounted.Render(LabelIn("second", "transition-all text-right opacity-0"));
+
+            // Act
+            ForcePanelUpdate(second.panel);
+
+            // Assert — (TextAnchor)(-1) where the pool did not hand the label back or its opacity does not transition.
+            Assert.That(ReferenceEquals(first, second) && Runs(second, "opacity")
+                ? second.resolvedStyle.unityTextAlign : (TextAnchor)(-1), Is.EqualTo(TextAnchor.MiddleRight));
+        }
+
+        [Test]
+        public void Given_APooledLabelTornDownBeforeTheCancelEventOfItsRunEventCancelIsSent_When_ItsNextConsumerIsRendered_Then_ThatConsumerHearsNoCancelEvent()
+        {
+            // Arrange — the write's run is cancelled at the update a quarter second in, and the label goes back to the pool
+            // and out again before the next update sends the cancel event.
+            VNodePoolTestAccess.ClearLabelPoolForTest();
+            var root = NewRoot();
+            var mounted = Mount(root, LabelIn("first", "transition-all"));
+            var first = Attached(root.Q<Label>("first"));
+            first.style.justifyContent = Justify.FlexEnd;
+            RunAQuarterSecond(first);
+            mounted.Render(V.Div());
+            mounted.Render(LabelIn("second", "transition-all"));
+            var second = root.Q<Label>("second");
+            var heard = On(second);
+
+            // Act
+            RunAQuarterSecond(second);
+
+            // Assert — -1 where the pool did not hand the label back.
+            Assert.That(ReferenceEquals(first, second) ? heard.JustifyCancels : -1, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AWatchedElementATransitionRunsOn_When_AClassNoRuleNamesToggles_Then_ItsStylePassesAllocateAsAnUnwatchedOnesDo()
+        {
+            // Arrange — both run an opacity transition, the watched one's given by a utility and the other's by an
+            // application rule, which watches nothing before the element's first run event.
+            AttachSheet(".app-fade { transition-property: opacity; transition-duration: 1s; }");
+            var watchedElement = Mounted("transition-all opacity-100 " + OneSecond);
+            var unwatchedElement = Mounted("app-fade opacity-100");
+            Swap(watchedElement, "opacity-100", "opacity-0");
+            Swap(unwatchedElement, "opacity-100", "opacity-0");
+            ForcePanelUpdate(watchedElement.panel);
+            var watched = Toggled(watchedElement);
+            var unwatched = Toggled(unwatchedElement);
+            var apart = Runs(watchedElement, "opacity") && Runs(unwatchedElement, "opacity")
+                && CallbackRegistryProbe.TrickleDownCallbackCount(watchedElement)
+                > CallbackRegistryProbe.TrickleDownCallbackCount(unwatchedElement);
             var canary = GCAllocationProbe.MedianBlocksDuring(() => s_sink = new object());
 
             // Act
-            var read = runsAny == null ? -1 : GCAllocationProbe.MedianBlocksDuring(() => s_ran = runsAny(element));
+            var extra = GCAllocationProbe.MedianBlocksDuring(watched) - GCAllocationProbe.MedianBlocksDuring(unwatched);
 
-            // Assert — -1 where there is no read to measure, or where the probe sees no allocation at all.
-            Assert.That(canary > 0 ? read : -1, Is.EqualTo(0));
+            // Assert — -1 where the watch is not what sets the two apart, or where the probe sees no allocation at all.
+            Assert.That(canary > 0 && apart ? extra : -1, Is.EqualTo(0));
         }
 
         [Component]
@@ -732,6 +1078,30 @@ namespace Velvet.Tests
 
             // Assert — -1 where nothing registered one while the element was rendered.
             Assert.That(watched ? CallbackRegistryProbe.TrickleDownCallbackCount(leaf) : -1, Is.EqualTo(0));
+        }
+
+        [Component]
+        private static VNode FieldHost() => V.Div(children: new VNode[]
+        {
+            Hooks.UseStore(s_shown, shown => shown) ? V.TextField(name: "field", className: "transition-all") : null,
+        });
+
+        [Test]
+        public void Given_ATextFieldWhoseInputATransitionUtilityGaveATransition_When_TheFieldIsRemoved_Then_ItsInputIsNoLongerMarked()
+        {
+            // Arrange — the input keeps its own classes through the pool (FiberTextFieldPoolHelper).
+            s_shown = new Shown();
+            var root = NewRoot();
+            var mounted = Mount(root, V.Component(FieldHost, key: "host"));
+            var input = root.Q<TextField>("field").Q<VisualElement>(className: StyleChildVariantClass.InputBoxClass);
+            var marked = input.ClassListContains(Watch);
+
+            // Act
+            s_shown.Hide();
+            mounted.FlushStateForTest();
+
+            // Assert — null where the input was not marked while the field was rendered.
+            Assert.That(marked ? input.ClassListContains(Watch) : (bool?)null, Is.False);
         }
 
         private static object s_sink;

@@ -187,8 +187,7 @@ namespace Velvet
         internal static readonly EngineMember HasRunningStyleAnimation = Method(UIElements,
             VisualElementType, "HasRunningAnimation", "System.Boolean", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
 
-        // StyleTransitionBehavior's read, in each style pass that restyles an element it watches, of whether any
-        // transition runs there.
+        // RunningStyleAnimations' read of whether a transition runs on an element at all.
         internal static readonly EngineMember HasRunningStyleAnimations =
             ReadProperty(UIElements, VisualElementType, "hasRunningAnimations", "System.Boolean");
 
@@ -790,18 +789,18 @@ namespace Velvet
 
         internal PropertyInfo? ResolveProperty() => Resolve() as PropertyInfo;
 
-        // An open-instance delegate over the property's getter, which reads a value-typed property without the box an
-        // invocation through the PropertyInfo returns; null where the member does not resolve or the runtime refuses
-        // to bind it.
-        internal TGetter? ResolveGetter<TGetter>() where TGetter : Delegate
+        // Open-instance delegates over the property's getter or over the method, which read a value-typed result without
+        // the box an invocation through the reflected member returns; null where the member does not resolve or the
+        // runtime refuses to bind it (EngineMemberResolutionTests names each bind the runtime makes).
+        internal TGetter? ResolveGetter<TGetter>() where TGetter : Delegate => Bound<TGetter>(ResolveProperty()?.GetMethod);
+
+        internal TMethod? ResolveOpenDelegate<TMethod>() where TMethod : Delegate => Bound<TMethod>(ResolveMethod());
+
+        private static TDelegate? Bound<TDelegate>(MethodInfo? method) where TDelegate : Delegate
         {
-            if (ResolveProperty()?.GetMethod is not { } getter)
-            {
-                return null;
-            }
             try
             {
-                return (TGetter)Delegate.CreateDelegate(typeof(TGetter), getter);
+                return method == null ? null : (TDelegate)Delegate.CreateDelegate(typeof(TDelegate), method);
             }
             catch (Exception exception) when (exception is ArgumentException or MemberAccessException
                 or MissingMethodException or NotSupportedException)

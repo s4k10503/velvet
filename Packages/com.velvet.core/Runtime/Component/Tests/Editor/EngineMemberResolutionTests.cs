@@ -37,6 +37,33 @@ namespace Velvet.Tests
                 + "both the declaration and every read of it");
         }
 
+        // The delegates the runtime binds over a resolved member, read where it keeps them: a refused bind leaves the
+        // read it serves off, so it fails here by name. Null where the field is not there.
+        private static object BoundDelegate(string field)
+            => typeof(EngineMember).Assembly.GetType("Velvet.RunningStyleAnimations")
+                ?.GetField(field, BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null);
+
+        [Test]
+        public void Given_TheEnginesRunningAnimationFlag_When_ItsGetterIsBoundAsAnOpenInstanceDelegate_Then_ItBinds()
+        {
+            // Act
+            var bound = BoundDelegate("Any");
+
+            // Assert
+            Assert.That(bound, Is.Not.Null, "VisualElement.hasRunningAnimations did not bind as Func<VisualElement, bool>");
+        }
+
+        [Test]
+        public void Given_TheEnginesRunningAnimationTest_When_BoundOverTheIntItsPropertyIdIsHeldAs_Then_ItBinds()
+        {
+            // Act
+            var bound = BoundDelegate("Of");
+
+            // Assert
+            Assert.That(bound, Is.Not.Null,
+                "VisualElement.HasRunningAnimation(StylePropertyId) did not bind as Func<VisualElement, int, bool>");
+        }
+
         // Each case below resolves a control beside the declaration under test, differing only in the one term the
         // case is named for, so a pass says that term is what was refused.
 

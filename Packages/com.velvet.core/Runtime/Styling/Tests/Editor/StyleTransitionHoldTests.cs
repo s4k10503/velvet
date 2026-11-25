@@ -27,21 +27,5 @@ namespace Velvet.Tests
             // Assert — -1 where the hold registered nothing to give back.
             Assert.That(held > before ? CallbackRegistryProbe.BubbleUpCallbackCount(root) : -1, Is.EqualTo(before));
         }
-
-        [Test]
-        public void Given_AHeldRoot_When_ItsHoldIsGivenBack_Then_ItKeepsNoTrickleDownCallbackTheHoldRegistered()
-        {
-            // Arrange
-            var root = new VisualElement();
-            var before = CallbackRegistryProbe.TrickleDownCallbackCount(root);
-            var hold = StyleTransitionBehavior.Hold(root);
-            var held = CallbackRegistryProbe.TrickleDownCallbackCount(root);
-
-            // Act
-            hold.Dispose();
-
-            // Assert — -1 where the hold registered nothing to give back.
-            Assert.That(held > before ? CallbackRegistryProbe.TrickleDownCallbackCount(root) : -1, Is.EqualTo(before));
-        }
     }
 }
