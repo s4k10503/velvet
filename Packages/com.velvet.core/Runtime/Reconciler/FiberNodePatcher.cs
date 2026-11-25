@@ -3314,8 +3314,7 @@ namespace Velvet
 
         // :has(.foo) tests the class attribute, which the cascade never edits: a class the projection took off
         // an element to let a variant win still matches, and one a variant payload put on it does not. Nor does a
-        // probe StyleUserClassProperties hosts, which carries the class until the panel's next layout pass; it is asked
-        // only where an element carries the class.
+        // probe StyleUserClassProperties hosts; IsProbe is asked only where an element carries the class.
         private static bool SubtreeCarriesClass(VisualElement root, string cls)
             => (((root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
                     || StyleClassProjection.SuppressesOwnClass(root, cls))
@@ -3456,12 +3455,13 @@ namespace Velvet
             ReevaluateHasOnAncestorChain(element);
         }
 
-        // A play's write of classes onto element (StyleAnimationClassUtils). Only a has-[.class]: rule naming one of them
-        // can change its match: the cascade's moves among the element's other classes leave each one's answer as it was
-        // (SubtreeCarriesClass), and no write of a class moves a row. So outside a pass only those rules on the chain above
-        // element are re-derived, at a lookup per context and ancestor and a subtree scan per rule named; inside one the
-        // element waits with the other seeds, as RestyleTreeAround's do.
-        internal static void RefreshHasVariantsForClasses(ReconcilerContext? ctx, VisualElement element, string[] classes)
+        // A play's write of classes onto element (StyleAnimationClassUtils), with the companions it wrote beside them.
+        // Only a has-[.class]: rule naming one of those can change its match: the cascade's moves among the element's
+        // other classes leave each one's answer as it was (SubtreeCarriesClass), and no write of a class moves a row. So
+        // outside a pass only those rules on the chain above element are re-derived, at a lookup per context and ancestor
+        // and a subtree scan per rule named; inside one the element waits with the other seeds, as RestyleTreeAround's do.
+        internal static void RefreshHasVariantsForClasses(ReconcilerContext? ctx, VisualElement element, string[] classes,
+            List<string>? companions)
         {
             if (PassIsOpen(ctx))
             {
@@ -3482,7 +3482,11 @@ namespace Velvet
                     }
                     foreach (var rule in rules)
                     {
-                        if (Array.IndexOf(classes, rule.ClassName) < 0) continue;
+                        if (Array.IndexOf(classes, rule.ClassName) < 0
+                            && !(companions != null && companions.Contains(rule.ClassName!)))
+                        {
+                            continue;
+                        }
                         EvaluateHasClassRule(holder, e, rule);
                     }
                 }
@@ -3832,6 +3836,7 @@ namespace Velvet
         // idempotent. A context reads only the rules it registered, so over a container other contexts place rows
         // into (SharedRowContainers) it re-derives theirs with their own.
         private readonly List<VisualElement?> _structuralRows = new();
+        private readonly List<VisualElement?> _expandedRows = new();
 
         internal void ApplyStructuralVariants(VisualElement container)
         {
@@ -3839,13 +3844,18 @@ namespace Velvet
             {
                 return;
             }
-            // The rows of an ItemMountContainer stand among its list's (ExpandItemMountContainers), so a pass over one a
-            // list holds is the list's; an unplaced one is matched over its own rows.
-            if (container is ItemMountContainer && ChildListWrites.ParentOf(container) is { } list)
+            // The rows of an anchor a list holds stand among the list's (ExpandItemMountContainers): matched where the
+            // list's last pass put them while the anchor holds as many, else by a pass over the whole list, which places
+            // every anchor again. An unplaced anchor is matched over its own rows.
+            if (container.userData is ItemMountPlace place && ChildListWrites.ParentOf(container) is { } list)
             {
+                if (_ctx.StructuralVariants.Count == 0 || ApplyStructuralVariantsInPlace(container, place))
+                {
+                    return;
+                }
                 container = list;
             }
-            ApplyStructuralVariantsOf(_ctx, container, _structuralRows);
+            ApplyStructuralVariantsOf(_ctx, container, _structuralRows, _expandedRows);
             if (!_ctx.SharesRowContainers)
             {
                 return;
@@ -3860,31 +3870,61 @@ namespace Velvet
                 // it again reads the same tree.
                 if (placers.TryGet(i, out var other) && !ReferenceEquals(other, _ctx))
                 {
-                    ApplyStructuralVariantsOf(other, container, _structuralRows);
+                    ApplyStructuralVariantsOf(other, container, _structuralRows, _expandedRows);
                 }
             }
         }
 
+        // False where no pass over the list has placed the anchor yet, or it now holds a different number of rows than
+        // that pass found, which moves every row behind it.
+        private bool ApplyStructuralVariantsInPlace(VisualElement anchor, ItemMountPlace place)
+        {
+            // MUTANT_SURVIVES(equivalent, line removed): this buffer is empty here, as ApplyStructuralVariantsOf and a
+            // true return below empty it once read, and a false return goes on into ApplyStructuralVariantsOf, which
+            // empties it first.
+            _structuralRows.Clear();
+            ChildListWrites.Rows(anchor, 0, int.MaxValue, _structuralRows);
+            if (place.Offset < 0 || _structuralRows.Count != place.Count)
+            {
+                return false;
+            }
+            var ruled = RuledRows(_ctx, _structuralRows, place.Offset);
+            // MUTANT_SURVIVES(equivalent, line removed): each pass empties this buffer before it reads it.
+            _structuralRows.Clear();
+            EvaluateRuled(_ctx, ruled, place.Total);
+            return true;
+        }
+
         private static void ApplyStructuralVariantsOf(ReconcilerContext ctx, VisualElement container,
-            List<VisualElement?> slotOccupants)
+            List<VisualElement?> slotOccupants, List<VisualElement?> expanded)
         {
             if (ctx.StructuralVariants.Count == 0)
             {
                 return;
             }
-
-            // The reconciler-invisible children — a filter bounds spacer, a relocated z-* element, a ring
-            // band — are not logical siblings, so first:/last:/nth must neither count them nor
-            // land on one. The rendered children are the slots, read from the row model in one call, wherever the
-            // invisible ones sit. The ruled ones are collected before any payload is written: a payload can add an
-            // invisible sibling (a filter bounds spacer).
-            List<(VisualElement Element, int Index, List<(StyleStructuralKind Kind, int N, string[] Payloads,
-                int[] Declarations, long Priority)> Rules)>? ruled = null;
             slotOccupants.Clear();
             ChildListWrites.Rows(container, 0, int.MaxValue, slotOccupants);
-            var rows = ExpandItemMountContainers(slotOccupants);
+            var rows = ExpandItemMountContainers(slotOccupants, expanded);
             var count = rows.Count;
-            for (var slot = 0; slot < count; slot++)
+            var ruled = RuledRows(ctx, rows, 0);
+            // MUTANT_SURVIVES(equivalent, line removed): each pass empties this buffer before it reads it.
+            slotOccupants.Clear();
+            expanded.Clear();
+            EvaluateRuled(ctx, ruled, count);
+        }
+
+        // The reconciler-invisible children — a filter bounds spacer, a relocated z-* element, a ring
+        // band — are not logical siblings, so first:/last:/nth must neither count them nor
+        // land on one. The rendered children are the slots, read from the row model in one call, wherever the
+        // invisible ones sit. The ruled ones are collected before any payload is written: a payload can add an
+        // invisible sibling (a filter bounds spacer). rows[0] stands at offset among its list's rows.
+        private static List<(VisualElement Element, int Index, List<(StyleStructuralKind Kind, int N, string[] Payloads,
+            int[] Declarations, long Priority)> Rules)>? RuledRows(ReconcilerContext ctx, List<VisualElement?> rows,
+            int offset)
+        {
+            List<(VisualElement Element, int Index, List<(StyleStructuralKind Kind, int N, string[] Payloads,
+                int[] Declarations, long Priority)> Rules)>? ruled = null;
+            for (var slot = 0; slot < rows.Count; slot++)
             {
                 var slotOccupant = rows[slot]!;
                 // A z-managed child's slot holds its PLACEHOLDER, not the element the rules were registered
@@ -3895,10 +3935,16 @@ namespace Velvet
                     ctx.ZLayerPlaceholders.TryGetValue(slotOccupant, out var real) ? real : slotOccupant);
                 if (ctx.StructuralVariants.TryGetValue(inner, out var rules))
                 {
-                    (ruled ??= new()).Add((inner, slot, rules));
+                    (ruled ??= new()).Add((inner, offset + slot, rules));
                 }
             }
-            slotOccupants.Clear();
+            return ruled;
+        }
+
+        private static void EvaluateRuled(ReconcilerContext ctx, List<(VisualElement Element, int Index,
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, long Priority)> Rules)>? ruled,
+            int count)
+        {
             if (ruled == null)
             {
                 return;
@@ -3909,24 +3955,34 @@ namespace Velvet
             }
         }
 
-        // A V.VirtualList row the renderer returned as a component or a Provider stands in an ItemMountContainer, and CSS
-        // sees the elements it renders among the list's other rows, so each one's own rows take its place.
-        private static List<VisualElement?> ExpandItemMountContainers(List<VisualElement?> rows)
+        // A V.VirtualList row the renderer returned as a component or a Provider stands in an anchor, and CSS sees the
+        // elements it renders among the list's other rows, so each anchor's own rows take its place, which the anchor
+        // keeps for its own pass (ApplyStructuralVariantsInPlace).
+        private static List<VisualElement?> ExpandItemMountContainers(List<VisualElement?> rows,
+            List<VisualElement?> expanded)
         {
             if (!HoldsItemMountContainer(rows))
             {
                 return rows;
             }
-            var expanded = new List<VisualElement?>(rows.Count);
             foreach (var row in rows)
             {
-                if (row is ItemMountContainer item)
+                if (row!.userData is ItemMountPlace place)
                 {
-                    ChildListWrites.Rows(item, 0, int.MaxValue, expanded);
+                    place.Offset = expanded.Count;
+                    ChildListWrites.Rows(row, 0, int.MaxValue, expanded);
+                    place.Count = expanded.Count - place.Offset;
                 }
                 else
                 {
                     expanded.Add(row);
+                }
+            }
+            foreach (var row in rows)
+            {
+                if (row!.userData is ItemMountPlace place)
+                {
+                    place.Total = expanded.Count;
                 }
             }
             return expanded;
@@ -3936,12 +3992,12 @@ namespace Velvet
         {
             foreach (var row in rows)
             {
-                if (row is ItemMountContainer)
+                if (row!.userData is ItemMountPlace)
                 {
                     return true;
                 }
             }
-            // MUTANT_SURVIVES(equivalent, literal): a list holding no ItemMountContainer expands to a copy of itself.
+            // MUTANT_SURVIVES(equivalent, literal): a list holding no anchor expands to a copy of itself.
             return false;
         }
 

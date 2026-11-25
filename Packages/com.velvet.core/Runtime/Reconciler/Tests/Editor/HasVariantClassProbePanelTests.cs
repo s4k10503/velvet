@@ -6,9 +6,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies a <c>has-[.class]:</c> element against the probe a variant payload of a class of the application's own
-    /// sends out beside the element it reached, which carries the class until the panel's next layout pass: the probe is
-    /// no descendant of the application's, so the payload alone still leaves the element unmatched, as
-    /// <c>:has(.foo)</c> does not match a class only <c>hover:foo</c> applies.
+    /// sends out beside the element it reached, which carries the class: the probe is no element the application
+    /// rendered, so the payload alone still leaves the element unmatched, as <c>:has(.foo)</c> does not match a class
+    /// only <c>hover:foo</c> applies.
     /// </summary>
     internal sealed class HasVariantClassProbePanelTests : PanelTestBase
     {
@@ -35,7 +35,7 @@ namespace Velvet.Tests
         public void Given_AHasClassElementAboveAHoveredPayloadOfTheClass_When_TheElementRendersWhileTheProbeStands_Then_ItDoesNotMatch()
         {
             // Arrange — the first hover's payload of lit, a class of the application's own, sends a probe out beside
-            // "lamp"; no layout pass runs here, so it stands.
+            // "lamp".
             _mounted = V.Mount(_window.rootVisualElement, V.Component(Holder, key: "holder"));
             var holder = _window.rootVisualElement.Q<VisualElement>("holder");
             using (var over = PointerOverEvent.GetPooled())

@@ -59,6 +59,7 @@ namespace Velvet
                     {
                         Add(also.Text, also.Clip, priority);
                         Add(dest, also.Clip, priority);
+                        changes.NoteCompanion(also.Clip);
                     }
                 }
             }
@@ -123,6 +124,7 @@ namespace Velvet
                         var keepClip = keep || ClipStays(dest, also.Text, kept);
                         Settle(also.Text, also.Clip, keepClip);
                         Settle(dest, also.Clip, keepClip);
+                        changes.NoteCompanion(also.Clip);
                     }
                 }
             }
@@ -263,6 +265,7 @@ namespace Velvet
             private bool _controlGate;
             private bool _boxGate;
             private bool _clip;
+            private List<string>? _companions;
 
             public Changes(VisualElement control)
             {
@@ -271,7 +274,11 @@ namespace Velvet
                 _controlGate = false;
                 _boxGate = false;
                 _clip = false;
+                _companions = null;
             }
+
+            // A class the call wrote beside the ones it names: the clip a text-overflow utility implies.
+            public void NoteCompanion(string cls) => (_companions ??= new List<string>(1)).Add(cls);
 
             public void Note(VisualElement dest, bool gateChanged, string core)
             {
@@ -300,7 +307,7 @@ namespace Velvet
                 // script adds; the box is the element's descendant, so the walk up from the element covers it too. Rest
                 // is left out: a class a play put on counts for has-[.class]: whatever rank it holds
                 // (StyleClassProjection.SuppressesOwnClass).
-                FiberNodePatcher.RefreshHasVariantsForClasses(ctx, _control, written);
+                FiberNodePatcher.RefreshHasVariantsForClasses(ctx, _control, written, _companions);
             }
 
             public void ReSync(ReconcilerContext? ctx)

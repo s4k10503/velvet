@@ -9,7 +9,8 @@ namespace Velvet.Tests
     /// Specifies a <c>has-[.class]:</c> element against a class a play writes onto a descendant on the panel's
     /// frames, outside any pass: a <see cref="V.Motion"/> whose mount enter holds its pose back and swaps it in on a
     /// later frame. The element matches once the play has written the class, as <c>:has()</c> matches a class a
-    /// script adds.
+    /// script adds, and stops matching once a play takes it away; the clip a text-overflow utility implies on a field's
+    /// input box is written and taken away with it.
     /// </summary>
     [TestFixture]
     internal sealed class PlayClassHasVariantTests : MotionSimulatedPanelTestsBase
@@ -20,6 +21,18 @@ namespace Velvet.Tests
         {
             ["hidden"] = "opacity-0",
             ["visible"] = "on opacity-100",
+        };
+
+        private static readonly Dictionary<string, MotionVariant> s_ellipsisPoses = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["visible"] = "text-ellipsis opacity-100",
+        };
+
+        private static readonly Dictionary<string, MotionVariant> s_ellipsisFirstPoses = new()
+        {
+            ["clipped"] = "text-ellipsis opacity-0",
+            ["shown"] = "opacity-100",
         };
 
         [Test]
@@ -42,6 +55,52 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("m").ClassListContains("on")
                 ? Root.Q<VisualElement>("parent").ClassListContains("bg-mark")
                 : (bool?)null, Is.True);
+        }
+
+        [Test]
+        public void Given_AHasClassElementNamingTheBoxClipAboveAMotionTextField_When_ItsMountEnterWritesATextOverflowUtility_Then_ItMatches()
+        {
+            // Arrange — the enter starts from "hidden".
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Div(name: "parent", className: "has-[.overflow-hidden]:bg-mark", children: new VNode[]
+                {
+                    V.Motion(name: "m", elementType: typeof(TextField), variants: s_ellipsisPoses, initial: "hidden",
+                        animate: "visible", transition: new StyleTransitionConfig { DurationSec = DurationSec }),
+                }),
+            });
+
+            // Act
+            AdvancePast(DurationSec);
+
+            // Assert — null where the play put no clip on the box.
+            Assert.That(Root.Q<VisualElement>("m").Q<VisualElement>(className: StyleChildVariantClass.InputBoxClass)
+                    .ClassListContains("overflow-hidden")
+                ? Root.Q<VisualElement>("parent").ClassListContains("bg-mark")
+                : (bool?)null, Is.True);
+        }
+
+        [Test]
+        public void Given_AHasClassElementNamingTheBoxClipAboveAMotionTextFieldEnteringFromATextOverflowUtility_When_TheEnterTakesItAway_Then_ItStopsMatching()
+        {
+            // Arrange — the enter starts from "clipped", whose text-overflow utility clips the field's input box.
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Div(name: "parent", className: "has-[.overflow-hidden]:bg-mark", children: new VNode[]
+                {
+                    V.Motion(name: "m", elementType: typeof(TextField), variants: s_ellipsisFirstPoses,
+                        initial: "clipped", animate: "shown",
+                        transition: new StyleTransitionConfig { DurationSec = DurationSec }),
+                }),
+            });
+            var matchedWhileClipped = Root.Q<VisualElement>("parent").ClassListContains("bg-mark");
+
+            // Act
+            AdvancePast(DurationSec);
+
+            // Assert — null where "parent" did not match while the box was clipped.
+            Assert.That(matchedWhileClipped ? Root.Q<VisualElement>("parent").ClassListContains("bg-mark") : (bool?)null,
+                Is.False);
         }
     }
 }

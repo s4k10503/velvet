@@ -352,10 +352,6 @@ namespace Velvet
             s_mounts.Add(mountPoint, ctx);
         }
 
-        // The context mounted on element itself, null for an element no mount was made on.
-        internal static ReconcilerContext? MountedOn(VisualElement element)
-            => s_mounts.TryGetValue(element, out var ctx) ? ctx : null;
-
         // The context of the nearest mount point at or above element, null for an element outside every mount.
         internal static ReconcilerContext? ContextOf(VisualElement? element)
         {

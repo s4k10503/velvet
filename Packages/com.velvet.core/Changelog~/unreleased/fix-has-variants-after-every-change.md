@@ -21,8 +21,7 @@
   first did not match `first:`, and a component row's elements matched by their place in an anchor of their own, so
   a component row rendering one element matched `first:` wherever it stood and never matched `even:`.
 - A `has-[.class]:` element no longer matches a class of the application's own that only a variant payload
-  (`hover:foo`) puts on a descendant, which it could when it re-derived its match before the panel's next layout pass
-  after such a payload.
+  (`hover:foo`) puts on a descendant.
 - A `V.VirtualList` range that took a row holding a `V.Portal` away outside a render, which a scroll or a resize does
   once the list's items have emptied, left the target's other children matching their structural variants as though
   the Portal's children were still there, and a `has-[…]:` element above the target matching those children. Both

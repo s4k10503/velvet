@@ -8,9 +8,10 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies structural variants over an element that holds the rows of two roots: one root's element that another
     /// root's Portal mounts into, and one another root is mounted into, a ScrollView among them, whose rows sit in a
-    /// content element of its own, and one whose userData the application wrote over. A change one root makes to the element's rows re-derives the rows of the other, whose
-    /// rules it did not register, as CSS's structural pseudo-classes read the whole child list whatever placed it. The
-    /// rules are <c>only:</c>, which holds wherever the other root's rows land.
+    /// content element of its own, and elements whose userData the application wrote over, one of them the top element
+    /// of a root mounted into a third root's element. A change one root makes to the element's rows re-derives the
+    /// rows of the other, whose rules it did not register, as CSS's structural pseudo-classes read the whole child list
+    /// whatever placed it. The rules are <c>only:</c>, which holds wherever the other root's rows land.
     /// </summary>
     [TestFixture]
     internal sealed class CrossRootStructuralVariantTests
@@ -34,6 +35,12 @@ namespace Velvet.Tests
 
         private static VNode ScrollViewTree()
             => V.ScrollView(name: "target", children: new VNode[] { V.Div(name: "own", className: "only:bg-mark") });
+
+        [Component(Compiler = false)]
+        private static VNode TargetComponent() => TargetTree();
+
+        [Component(Compiler = false)]
+        private static VNode Host() => V.Div(name: "host");
 
         [Component(Compiler = false)]
         private static VNode SwitchableScrollView()
@@ -85,6 +92,40 @@ namespace Velvet.Tests
 
             // Assert — null where "own" did not match only: before the Portal's row joined it.
             Assert.That(onlyBeforeThePortal ? Own.ClassListContains("bg-mark") : (bool?)null, Is.False);
+        }
+
+        [Test]
+        public void Given_AChildMatchingOnlyInARootsTopElementWhoseUserDataTheApplicationWroteOverMountedIntoAThirdRootsElement_When_AnotherRootsPortalMountsARowBesideIt_Then_ItStopsMatching()
+        {
+            // Arrange — the root holding "target" is mounted into "host", which a third root's component rendered.
+            using var hostTree = V.Mount(_targetRoot, V.Component(Host, key: "host"));
+            using var targetTree = V.Mount(_targetRoot.Q<VisualElement>("host"), V.Component(TargetComponent, key: "target"));
+            Target.userData = "the application's";
+            var onlyBeforeThePortal = Own.ClassListContains("bg-mark");
+
+            // Act
+            using var portalling = V.Mount(_otherRoot, V.Div(children: new VNode[]
+            {
+                V.Portal(Target, new VNode[] { V.Div(name: "portalled") }),
+            }));
+
+            // Assert — null where "own" did not match only: before the Portal's row joined it.
+            Assert.That(onlyBeforeThePortal ? Own.ClassListContains("bg-mark") : (bool?)null, Is.False);
+        }
+
+        [Test]
+        public void Given_AChildMatchingOnlyInAComponentsElementWhoseUserDataTheApplicationWroteOver_When_AnotherRootIsMountedIntoIt_Then_ItStopsMatching()
+        {
+            // Arrange — the application's value replaces the fiber of the component that rendered "target".
+            using var targetTree = V.Mount(_targetRoot, V.Component(TargetComponent, key: "target"));
+            Target.userData = "the application's";
+            var onlyBeforeTheMount = Own.ClassListContains("bg-mark");
+
+            // Act
+            using var nested = V.Mount(Target, V.Div(name: "nested"));
+
+            // Assert — null where "own" did not match only: before the other root's row joined it.
+            Assert.That(onlyBeforeTheMount ? Own.ClassListContains("bg-mark") : (bool?)null, Is.False);
         }
 
         [Test]

@@ -23,10 +23,7 @@ namespace Velvet
             var content = ChildListWrites.ContentOf(container);
             var placers = s_placers.GetOrCreateValue(content);
             placers.Add(ctx);
-            if (CreatorOf(content) is { } creator)
-            {
-                placers.Add(creator);
-            }
+            AddCreators(placers, content);
             if (placers.Count < 2)
             {
                 return;
@@ -44,24 +41,31 @@ namespace Velvet
         internal static bool TryGetPlacers(VisualElement container, out WeakContextList placers)
             => s_placers.TryGetValue(ChildListWrites.ContentOf(container), out placers!);
 
-        // The context whose walk reconciles content's rows: the nearest element at or above content that names one, by the
-        // fiber FiberNodeFactory leaves on what it creates (VisualElement.userData) or by being where a root is mounted
-        // (StyleThemeTokens.MountedOn). A ScrollView's content names none of its own, and the ScrollView above it does;
-        // an element whose userData the application wrote over is read through its parent.
-        private static ReconcilerContext? CreatorOf(VisualElement content)
+        // The contexts whose walk may reconcile content's rows, going up from content as far as the first element holding
+        // the fiber FiberNodeFactory leaves on what it creates (VisualElement.userData): that fiber's context, and at each
+        // element on the way the contexts a Portal or a root places rows into it for. An element whose userData the
+        // application wrote a value of its own over holds no fiber, and the walk goes past it. A context taken that
+        // reconciles no row of content costs its passes a lookup and holds no rule for those rows.
+        private static void AddCreators(WeakContextList placers, VisualElement content)
         {
             for (var element = content; element != null; element = ChildListWrites.ParentOf(element))
             {
+                if (s_placers.TryGetValue(element, out var placing))
+                {
+                    for (var i = 0; i < placing.Count; i++)
+                    {
+                        if (placing.TryGet(i, out var placer))
+                        {
+                            placers.Add(placer);
+                        }
+                    }
+                }
                 if (element.userData is ComponentFiber { Reconciler: { } reconciler })
                 {
-                    return reconciler.Context;
-                }
-                if (StyleThemeTokens.MountedOn(element) is { } mounted)
-                {
-                    return mounted;
+                    placers.Add(reconciler.Context);
+                    return;
                 }
             }
-            return null;
         }
     }
 }
