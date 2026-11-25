@@ -114,7 +114,7 @@ namespace Velvet
 
         // The element UI Toolkit's own child-list calls on parent write into: parent itself, or the content container
         // it forwards to.
-        private static VisualElement ContentOf(VisualElement parent)
+        internal static VisualElement ContentOf(VisualElement parent)
         {
             var content = parent;
             for (var hops = 0; hops < 8 && content.contentContainer is { } next && !ReferenceEquals(next, content); hops++)

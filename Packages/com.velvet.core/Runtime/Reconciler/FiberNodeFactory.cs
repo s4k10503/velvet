@@ -847,7 +847,7 @@ namespace Velvet
         // container to decide, which VirtualListItemMountTests pins alongside the stacking.
         // The anchor is not the author's element, which is why it declines picking.
         private static VisualElement CreateItemMountContainer()
-            => new VisualElement
+            => new ItemMountContainer
             {
                 pickingMode = PickingMode.Ignore,
                 style = { overflow = Overflow.Visible }

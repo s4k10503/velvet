@@ -32,8 +32,7 @@ namespace Velvet
     /// <para/>
     /// Limitations: the payload must be a plain utility — composing with a nested variant
     /// (<c>first:hover:…</c>) is unsupported (the structural pass has no gating owner, so such a token is
-    /// dropped). Items virtualized by <c>V.VirtualList</c> are not evaluated by the structural pass (the
-    /// controller mounts rows on its own path), mirroring the gap manipulator's VirtualList exclusion.
+    /// dropped).
     /// </summary>
     internal static class StyleStructuralVariantClass
     {

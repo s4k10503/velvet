@@ -37,9 +37,8 @@ namespace Velvet
     /// is no UI-Toolkit attribute-changed event, so reactivity is driven by the props patch path (a changed
     /// <c>Data</c> / <c>Aria</c> re-derives the payload) and by the class-change config pass — mirroring the
     /// <c>checked:</c> manipulator's documented inability to observe a purely-programmatic change with no
-    /// signal. A <c>data-</c> / <c>aria-</c> variant on a <c>V.VirtualList</c> container is not evaluated
-    /// (its items mount on the controller's own path, which does not build the attribute store), mirroring
-    /// the structural / has-class variants' VirtualList exclusion.
+    /// signal. A <c>V.VirtualList</c> takes no <c>Data</c> / <c>Aria</c> props, so a <c>data-</c> /
+    /// <c>aria-</c> variant in its own className never matches.
     /// </summary>
     internal static class StyleAttributeVariantClass
     {

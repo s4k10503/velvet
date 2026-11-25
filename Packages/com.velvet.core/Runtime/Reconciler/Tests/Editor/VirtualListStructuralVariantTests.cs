@@ -7,10 +7,11 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies structural variants (<c>first:</c>, <c>last:</c>) against the rows a <see cref="V.VirtualList{T}"/>
-    /// range places, which no walk reconciles as the children of the list's container: a row matches its place among
-    /// the rows a range leaves standing, and a child of the target a row's Portal mounts into matches its place again
-    /// once a range rendered outside any pass takes that row away.
+    /// Specifies structural variants (<c>first:</c>, <c>last:</c>, <c>even:</c>) against the rows a
+    /// <see cref="V.VirtualList{T}"/> range places, which no walk reconciles as the children of the list's container: a
+    /// row matches its place among the rows a range leaves standing, the element a component row renders as well, which
+    /// stands in an anchor of its own, and a child of the target a row's Portal mounts into matches its place again once
+    /// a range rendered outside any pass takes that row away.
     /// </summary>
     [TestFixture]
     internal sealed class VirtualListStructuralVariantTests
@@ -22,13 +23,22 @@ namespace Velvet.Tests
         private static Func<string, VNode> s_row;
         private static VisualElement s_target;
         private static StateUpdater<int> s_render;
+        private static StateUpdater<int> s_renderRowB;
 
         [SetUp]
         public void SetUp()
         {
             _root = new VisualElement();
-            (s_items, s_row, s_target, s_render) =
-                (new[] { "a", "b", "c" }, item => V.Div(name: item, className: "first:bg-mark"), null, default);
+            (s_items, s_row, s_target, s_render, s_renderRowB) =
+                (new[] { "a", "b", "c" }, item => V.Div(name: item, className: "first:bg-mark"), null, default, default);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ComponentRow(string item)
+        {
+            var (_, setRender) = Hooks.UseState(0);
+            if (item == "b") s_renderRowB = setRender;
+            return V.Div(name: item, className: "first:bg-mark even:bg-alt");
         }
 
         [Component(Compiler = false)]
@@ -76,6 +86,41 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_root.Q<VisualElement>("b").ClassListContains("bg-mark"), Is.True);
+        }
+
+        [Test]
+        public void Given_AnElementRowAndAComponentRowCarryingEven_When_ARangeHoldsBoth_Then_TheComponentRowMatchesEven()
+        {
+            // Arrange — "a" is an element row, "b" a component row.
+            s_row = item => item == "a"
+                ? V.Div(name: item, className: "first:bg-mark even:bg-alt")
+                : V.Component(ComponentRow, item, key: item);
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            var controller = Controller(mounted);
+
+            // Act — a range of "a" and "b", outside any pass.
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 15f);
+
+            // Assert
+            Assert.That(_root.Q<VisualElement>("b").ClassListContains("bg-alt"), Is.True);
+        }
+
+        [Test]
+        public void Given_AComponentRowThatIsNotFirst_When_ItRendersAgain_Then_ItStillDoesNotMatchFirst()
+        {
+            // Arrange — a range of "a" and "b", outside any pass.
+            s_row = item => V.Component(ComponentRow, item, key: item);
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 15f);
+            var rowB = _root.Q<VisualElement>("b");
+            var notFirstBefore = !rowB.ClassListContains("bg-mark");
+
+            // Act — "b"'s own component renders again, into the anchor it stands in.
+            s_renderRowB.Invoke(previous => previous + 1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — null where "b" matched first: before its render.
+            Assert.That(notFirstBefore ? rowB.ClassListContains("bg-mark") : (bool?)null, Is.False);
         }
 
         [Test]

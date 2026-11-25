@@ -16,8 +16,13 @@
   place among all of the element's children after either root changes them. A change one root made re-derived only
   the children whose variants that root declared, so `only:` kept holding beside the other root's rows.
 - The rows of a `V.VirtualList` now match their structural variants (`first:`, `last:`, `odd:`, `even:`, `nth-N:`…)
-  by their place among the rows the list shows. Their match was not derived from the rows a range placed, so a row a
-  scroll made the first did not match `first:`.
+  by their place among the rows the list shows, the elements a row the renderer returns as a component or a
+  `V.Provider` renders among them. Their match was not derived from the rows a range placed, so a row a scroll made the
+  first did not match `first:`, and a component row's elements matched by their place in an anchor of their own, so
+  a component row rendering one element matched `first:` wherever it stood and never matched `even:`.
+- A `has-[.class]:` element no longer matches a class of the application's own that only a variant payload
+  (`hover:foo`) puts on a descendant, which it did when it re-derived its match before the panel's next layout pass
+  after the first such payload on that panel.
 - A `V.VirtualList` range that took a row holding a `V.Portal` away outside a render, which a scroll or a resize does
   once the list's items have emptied, left the target's other children matching their structural variants as though
   the Portal's children were still there, and a `has-[…]:` element above the target matching those children. Both

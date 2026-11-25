@@ -10,19 +10,20 @@ namespace Velvet
     // other contexts recorded there too (FiberNodePatcher.ApplyStructuralVariants).
     //
     // Recorded where a context places rows from outside the walk that reconciles a container's own children: a Portal's
-    // mount into its target and a root's mount into its element. The context that created the element is read off the
-    // fiber FiberNodeFactory leaves on it (VisualElement.userData), so an element no ElementNode or MotionNode created
-    // names no creator. The contexts of a container are told it is shared (ReconcilerContext.SharesRowContainers) once
-    // it holds two, so a pass in a context that shares none looks nothing up here.
+    // mount into its target and a root's mount into its element. Both sides key on the element whose rows a structural
+    // pass reads (ChildListWrites.ContentOf), a ScrollView's content rather than the ScrollView a pass is handed. The
+    // contexts of a container are told it is shared (ReconcilerContext.SharesRowContainers) once it holds two, so a pass
+    // in a context that shares none looks nothing up here.
     internal static class SharedRowContainers
     {
         private static readonly ConditionalWeakTable<VisualElement, WeakContextList> s_placers = new();
 
         internal static void NotePlacer(ReconcilerContext ctx, VisualElement container)
         {
-            var placers = s_placers.GetOrCreateValue(container);
+            var content = ChildListWrites.ContentOf(container);
+            var placers = s_placers.GetOrCreateValue(content);
             placers.Add(ctx);
-            if ((container.userData as ComponentFiber)?.Reconciler?.Context is { } creator)
+            if (CreatorOf(content) is { } creator)
             {
                 placers.Add(creator);
             }
@@ -41,6 +42,26 @@ namespace Velvet
 
         // The contexts placing rows into container, false for one no Portal or root placed rows into.
         internal static bool TryGetPlacers(VisualElement container, out WeakContextList placers)
-            => s_placers.TryGetValue(container, out placers!);
+            => s_placers.TryGetValue(ChildListWrites.ContentOf(container), out placers!);
+
+        // The context whose walk reconciles content's rows: the nearest element at or above content that names one, by the
+        // fiber FiberNodeFactory leaves on what it creates (VisualElement.userData) or by being where a root is mounted
+        // (StyleThemeTokens.MountedOn). A ScrollView's content names none of its own, and the ScrollView above it does;
+        // an element whose userData the application wrote over is read through its parent.
+        private static ReconcilerContext? CreatorOf(VisualElement content)
+        {
+            for (var element = content; element != null; element = ChildListWrites.ParentOf(element))
+            {
+                if (element.userData is ComponentFiber { Reconciler: { } reconciler })
+                {
+                    return reconciler.Context;
+                }
+                if (StyleThemeTokens.MountedOn(element) is { } mounted)
+                {
+                    return mounted;
+                }
+            }
+            return null;
+        }
     }
 }

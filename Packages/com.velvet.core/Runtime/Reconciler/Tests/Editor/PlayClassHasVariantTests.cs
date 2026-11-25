@@ -19,7 +19,7 @@ namespace Velvet.Tests
         private static readonly Dictionary<string, MotionVariant> s_poses = new()
         {
             ["hidden"] = "opacity-0",
-            ["visible"] = "opacity-100 on",
+            ["visible"] = "on opacity-100",
         };
 
         [Test]

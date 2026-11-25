@@ -3300,17 +3300,26 @@ namespace Velvet
         {
             foreach (var rule in rules)
             {
-                var on = DescendantCarriesClass(element.contentContainer, rule.ClassName!);
-                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Has, ctx,
-                    declarations: rule.Declarations);
+                EvaluateHasClassRule(ctx, element, rule);
             }
         }
 
+        private static void EvaluateHasClassRule(ReconcilerContext ctx, VisualElement element,
+            (string? ClassName, string?[] Payloads, int[] Declarations) rule)
+        {
+            var on = DescendantCarriesClass(element.contentContainer, rule.ClassName!);
+            StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Has, ctx,
+                declarations: rule.Declarations);
+        }
+
         // :has(.foo) tests the class attribute, which the cascade never edits: a class the projection took off
-        // an element to let a variant win still matches, and one a variant payload put on it does not.
+        // an element to let a variant win still matches, and one a variant payload put on it does not. Nor does the
+        // probe StyleUserClassProperties hosts beside an element a payload of the class reached, which carries it until
+        // the panel's next layout pass; it is asked only where an element carries the class.
         private static bool SubtreeCarriesClass(VisualElement root, string cls)
-            => (root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
-                || StyleClassProjection.SuppressesOwnClass(root, cls)
+            => (((root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
+                    || StyleClassProjection.SuppressesOwnClass(root, cls))
+                && !StyleUserClassProperties.IsProbe(root))
                 || DescendantCarriesClass(root, cls);
 
         private static bool DescendantCarriesClass(VisualElement parent, string cls)
@@ -3438,14 +3447,51 @@ namespace Velvet
         // otherwise it is done at once.
         internal static void RestyleTreeAround(ReconcilerContext? ctx, VisualElement element)
         {
-            if (ctx != null && (ctx.SharedReconcileDepth > 0 || ctx.Pass.Recording || ctx.Pass.Applying))
+            if (PassIsOpen(ctx))
             {
-                ctx.TreeRestyleSeeds.Add(element);
+                ctx!.TreeRestyleSeeds.Add(element);
                 return;
             }
             if (ctx is { IsDisposed: false }) ctx.Root?.ApplyStructuralVariantsOf(element);
             ReevaluateHasOnAncestorChain(element);
         }
+
+        // A play's write of classes onto element (StyleAnimationClassUtils). Only a has-[.class]: rule naming one of them
+        // can change its match: the cascade's moves among the element's other classes leave each one's answer as it was
+        // (SubtreeCarriesClass), and no write of a class moves a row. So outside a pass only those rules on the chain above
+        // element are re-derived, at a lookup per context and ancestor and a subtree scan per rule named; inside one the
+        // element waits with the other seeds, as RestyleTreeAround's do.
+        internal static void RefreshHasVariantsForClasses(ReconcilerContext? ctx, VisualElement element, string[] classes)
+        {
+            if (PassIsOpen(ctx))
+            {
+                ctx!.TreeRestyleSeeds.Add(element);
+                return;
+            }
+            if (s_hasContexts.Count == 0)
+            {
+                return;
+            }
+            for (var e = element; e != null; e = ChildListWrites.ParentOf(e))
+            {
+                for (var i = 0; i < s_hasContexts.Count; i++)
+                {
+                    if (!s_hasContexts.TryGet(i, out var holder) || !holder.HasClassVariants.TryGetValue(e, out var rules))
+                    {
+                        continue;
+                    }
+                    foreach (var rule in rules)
+                    {
+                        if (Array.IndexOf(classes, rule.ClassName) < 0) continue;
+                        EvaluateHasClassRule(holder, e, rule);
+                    }
+                }
+            }
+        }
+
+        // Whether ctx's pass records, applies or is still on the stack, so the tree it is making is not finished.
+        private static bool PassIsOpen(ReconcilerContext? ctx)
+            => ctx != null && (ctx.SharedReconcileDepth > 0 || ctx.Pass.Recording || ctx.Pass.Applying);
 
         private static readonly HashSet<VisualElement> s_seedAncestors = new();
 
@@ -3481,6 +3527,10 @@ namespace Velvet
         // chain can be affected.
         private static void ReevaluateHasOnAncestorChain(VisualElement root)
         {
+            if (s_hasContexts.Count == 0)
+            {
+                return;
+            }
             for (var e = root; e != null; e = ChildListWrites.ParentOf(e))
             {
                 ReevaluateHasAt(e);
@@ -3789,6 +3839,12 @@ namespace Velvet
             {
                 return;
             }
+            // The rows of an ItemMountContainer stand among its list's (ExpandItemMountContainers), so a pass over one a
+            // list holds is the list's; an unplaced one is matched over its own rows.
+            if (container is ItemMountContainer && ChildListWrites.ParentOf(container) is { } list)
+            {
+                container = list;
+            }
             ApplyStructuralVariantsOf(_ctx, container, _structuralRows);
             if (!_ctx.SharesRowContainers)
             {
@@ -3826,10 +3882,11 @@ namespace Velvet
                 int[] Declarations, long Priority)> Rules)>? ruled = null;
             slotOccupants.Clear();
             ChildListWrites.Rows(container, 0, int.MaxValue, slotOccupants);
-            var count = slotOccupants.Count;
+            var rows = ExpandItemMountContainers(slotOccupants);
+            var count = rows.Count;
             for (var slot = 0; slot < count; slot++)
             {
-                var slotOccupant = slotOccupants[slot]!;
+                var slotOccupant = rows[slot]!;
                 // A z-managed child's slot holds its PLACEHOLDER, not the element the rules were registered
                 // against (ApplyStructuralVariantConfig keys by the real element / its own wrapper) — resolve
                 // through the z-registry first, then the ordinary wrapper unwrap (the slot may ALSO hold a
@@ -3850,6 +3907,42 @@ namespace Velvet
             {
                 EvaluateStructural(ctx, element, index, count, rules);
             }
+        }
+
+        // A V.VirtualList row the renderer returned as a component or a Provider stands in an ItemMountContainer, and CSS
+        // sees the elements it renders among the list's other rows, so each one's own rows take its place.
+        private static List<VisualElement?> ExpandItemMountContainers(List<VisualElement?> rows)
+        {
+            if (!HoldsItemMountContainer(rows))
+            {
+                return rows;
+            }
+            var expanded = new List<VisualElement?>(rows.Count);
+            foreach (var row in rows)
+            {
+                if (row is ItemMountContainer item)
+                {
+                    ChildListWrites.Rows(item, 0, int.MaxValue, expanded);
+                }
+                else
+                {
+                    expanded.Add(row);
+                }
+            }
+            return expanded;
+        }
+
+        private static bool HoldsItemMountContainer(List<VisualElement?> rows)
+        {
+            foreach (var row in rows)
+            {
+                if (row is ItemMountContainer)
+                {
+                    return true;
+                }
+            }
+            // MUTANT_SURVIVES(equivalent, literal): a list holding no ItemMountContainer expands to a copy of itself.
+            return false;
         }
 
         // Configures the element's StyleChildVariantManipulator from the [&>*]:<utility> tokens in classNames
