@@ -256,8 +256,8 @@ namespace Velvet
 
         // Whether nothing in tree can push onto the cursor, so the walk of it would push nothing whichever child it
         // looked for. A walk visits every sibling before the one it wants, so skipping it keeps an isolated render's
-        // cost off the length of the list its output holds. Memo inner nodes are not in the tree, so a MemoNode
-        // counts as a pusher.
+        // cost off the length of the list its output holds. Memo inner nodes and an AnimatePresence's exiting children
+        // are not in the tree, so a MemoNode and an AnimatePresenceNode count as pushers.
         private static bool PushesNoContext(ComponentFiber ancestor, VNode?[] tree)
         {
             if (!ReferenceEquals(ancestor.ContextFreeOutput, tree))
@@ -275,7 +275,6 @@ namespace Velvet
             {
                 switch (node)
                 {
-                    // An AnimatePresence's exiting children are not in the tree either.
                     case ContextProviderNode or MotionNode or MemoNode or AnimatePresenceNode:
                         return false;
                     case FragmentNode fragment:
