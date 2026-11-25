@@ -25,8 +25,8 @@ namespace Velvet.Tests
         private static VisualElement s_target;
         private static int s_rowHashes;
 
-        // Counts every read of the target's content container, whoever makes it; the row model makes one each time it
-        // addresses the target (ChildListWrites.ContentOf).
+        // Counts every read of the target's content container, whoever makes it; the row model's are the ones
+        // ChildListWrites.ContentOf makes.
         private sealed class CountedTarget : VisualElement
         {
             public int Reads;
