@@ -5,7 +5,8 @@
   value a `V.Provider` above the list or Portal has now where it read the value that Provider had when the row or child
   was created: where a `Memoize` component between them had bailed out of a change to that Provider, where the
   component rendering the list or Portal had since put a new value around it, and where the list's renderer had since
-  put a new value around the row. The children of a `V.Portal` that such a render mounts read those values too.
+  put a new value around the row. The children of a `V.Portal` that such a render mounts read those values too. This
+  holds where no component on the way down places one node instance at two places.
 - A row a scroll mounts reads a `V.Provider` the component rendering the `V.VirtualList` put around it, as React reads
   the nearest Provider, where it read a farther `V.Provider` of the same context above that component. Where that
   component had changed the Provider's value while handing back the same element instance around the list, and no
