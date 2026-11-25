@@ -44,6 +44,9 @@ namespace Velvet.Tests
         private static StateUpdater<string> s_setHostValue;
         private static VisualElement s_portalTarget;
         private static VNode s_shell;
+        private static StateUpdater<int> s_setSuspenderOwn;
+        private static VelvetTaskCompletionSource<int> s_pendingRead;
+        private static ComponentFiber s_hiddenHostFiber;
         private static ComponentFiber s_slicedListFiber;
         private static int s_generation;
 
@@ -65,6 +68,9 @@ namespace Velvet.Tests
             s_setPortalShown = default;
             s_setTheme = default;
             s_setHostValue = default;
+            s_setSuspenderOwn = default;
+            s_pendingRead = null;
+            s_hiddenHostFiber = null;
             s_slicedListFiber = null;
             s_generation = 0;
         }
@@ -272,6 +278,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AListHostInAPrimaryItsSuspenseHid_When_AScrollMountsARow_Then_TheRowReadsTheProviderInsideThePrimary()
+        {
+            // Arrange — the component beside the host suspends again, so the Suspense keeps the primary it had shown,
+            // hidden, with the host and the Provider around it; a farther Provider of the same context sits above the
+            // component rendering the Suspense.
+            using var mounted = V.Mount(_root, V.Component(OuterOverSuspendingMidRender, key: "root"));
+            s_setSuspenderOwn.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var notArranged = s_hiddenHostFiber is not { IsOffscreen: true } ? "the primary was not hidden" : null;
+
+            // Act
+            RenderRange(mounted);
+
+            // Assert — an arrangement that fell short reads as what it missed rather than as the row's value.
+            Assert.That(notArranged ?? s_reading, Is.EqualTo("inner"));
+        }
+
+        [Test]
         public void Given_ARendererPuttingAProviderAroundAMemoizedRow_When_TheHostChangesItsValueTwice_Then_TheRowReadsTheSecondChangeToo()
         {
             // Arrange — the host's whole output is the list, so no walk encloses the rows' patches.
@@ -353,6 +378,37 @@ namespace Velvet.Tests
         private sealed record SlicedRowProps(int Index, int Generation);
 
         private sealed record OwnerProps(int Index);
+
+        [Component(Compiler = false)]
+        private static VNode OuterOverSuspendingMidRender()
+            => V.Provider(s_theme, "outer", new VNode[] { V.Component(SuspendingMidRender, key: "mid") });
+
+        [Component(Compiler = false)]
+        private static VNode SuspendingMidRender()
+            => V.Suspense(fallback: V.Label(text: "loading"), children: new VNode[]
+            {
+                V.Component(ResuspendingRender, key: "suspender"),
+                V.Provider(s_theme, "inner", new VNode[] { V.Component(HiddenListHostRender, key: "host") }),
+            });
+
+        // Reads a value at once until its own update asks for one that is still pending.
+        [Component(Compiler = false)]
+        private static VNode ResuspendingRender()
+        {
+            var (own, setOwn) = Hooks.UseState(0);
+            s_setSuspenderOwn = setOwn;
+            var value = Hooks.Use<int>(_ => own == 0
+                ? VelvetTask.FromResult(0)
+                : (s_pendingRead = new VelvetTaskCompletionSource<int>()).Task, own);
+            return V.Label(text: "suspender:" + value);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode HiddenListHostRender()
+        {
+            s_hiddenHostFiber = FiberAmbientStack.Current;
+            return RowList(ReaderRow);
+        }
 
         // A new output tree each render, which reaches the Portal and so captures under it.
         [Component(Compiler = false)]

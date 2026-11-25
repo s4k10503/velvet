@@ -508,14 +508,21 @@ namespace Velvet
                 && ancestor.Reconciler.Context.IsSuspenseFallbackShownOnSpine(
                     ancestor, walk.Container, walk.PortalScope, FiberKeying.SuspenseAt(position, suspense.Key, nodeIndex),
                     suspense);
-            var sub = wasFallback
-                ? (suspense.Fallback != null ? new[] { suspense.Fallback } : System.Array.Empty<VNode>())
-                : (suspense.Children ?? System.Array.Empty<VNode>());
-            if (sub.Length == 0) return false;
-
-            var subPosition = FiberKeying.SuspenseSubtree(
-                position, suspenseKey, suspense.Key, nodeIndex, wasFallback);
-            return PushEnclosingProviders(sub, subPosition, in walk);
+            // A primary its boundary had committed stays behind the fallback, hidden with its fibers
+            // (GeneralPathReconciler.ExpandSuspenseInline), so a fiber the fallback does not hold is looked for there.
+            if (wasFallback && suspense.Fallback != null
+                && PushEnclosingProviders(
+                    new[] { suspense.Fallback },
+                    FiberKeying.SuspenseSubtree(position, suspenseKey, suspense.Key, nodeIndex, isFallback: true),
+                    in walk))
+            {
+                return true;
+            }
+            if (suspense.Children is not { Length: > 0 }) return false;
+            return PushEnclosingProviders(
+                suspense.Children,
+                FiberKeying.SuspenseSubtree(position, suspenseKey, suspense.Key, nodeIndex, isFallback: false),
+                in walk);
         }
 
         // A MotionNode establishes MotionContext for its subtree, exactly as a Provider establishes its
