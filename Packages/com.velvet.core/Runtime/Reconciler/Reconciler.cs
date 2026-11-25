@@ -805,6 +805,13 @@ namespace Velvet
             if (detachedHost == null) return null;
             var stack = _ctx.ComponentContextStack;
             var scope = new DetachedItemScope { Host = detachedHost, EnclosingPortal = _ctx.CurrentPortalPlaceholder };
+            var resolved = outsidePass ? detachedHost.Resolve() : null;
+            if (resolved != null)
+            {
+                // Under the spine, as FiberContextSpine pushes a stamp's snapshot under its edges.
+                scope.PushedKeys = new List<object>();
+                DetachedHostCapture.PushSnapshot(stack, resolved.Tops, scope.PushedKeys);
+            }
             if (outsidePass)
             {
                 if (host != null)
@@ -820,12 +827,7 @@ namespace Velvet
                     scope.Spine = FiberContextSpine.Push(host);
                 }
                 // What the host's own output put around the list, on top of what encloses the host.
-                if (detachedHost.Resolve() is { } resolved)
-                {
-                    scope.PushedKeys = new List<object>();
-                    DetachedHostCapture.PushSnapshot(stack, resolved.Tops, all: scope.Spine.Lost, scope.PushedKeys);
-                    resolved.PushChain(stack, scope.PushedKeys);
-                }
+                resolved?.PushChain(stack, scope.PushedKeys!);
             }
             scope.EnclosingFrame = stack.EnterFrame(detachedHost);
             if (host == null) return scope;

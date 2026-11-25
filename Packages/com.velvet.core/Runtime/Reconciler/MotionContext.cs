@@ -76,12 +76,13 @@ namespace Velvet
         private static bool IsOrchestration(KeyValuePair<object, object> entry)
             => ReferenceEquals(entry.Key, Orchestration);
 
-        // Left out of a DetachedHostCapture: the orchestration outlives no pass, and the enter flags come from the stamp.
+        // Left out of DetachedHostCapture.Local, which goes on top of everything else a detached render pushes: the
+        // orchestration outlives no pass, and the enter flags are read from the snapshot pushed under it, as they were
+        // where the stamped fiber or the capture was taken, rather than from where the host is now.
         internal static bool TravelsOnlyInStamps(KeyValuePair<object, object> entry)
-            => ReferenceEquals(entry.Key, Orchestration) || IsEnterFlag(entry.Key);
-
-        internal static bool IsEnterFlag(object key)
-            => ReferenceEquals(key, EntersBlocked) || ReferenceEquals(key, EntersWithheld);
+            => ReferenceEquals(entry.Key, Orchestration)
+               || ReferenceEquals(entry.Key, EntersBlocked)
+               || ReferenceEquals(entry.Key, EntersWithheld);
     }
 
     // Mutable per-subtree stagger state pushed onto MotionContext.Orchestration (see its doc).

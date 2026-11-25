@@ -98,7 +98,7 @@ namespace Velvet
         // Each context's entries in the order they were pushed.
         internal readonly KeyValuePair<object, object>[] Local;
         // The top value of every context where the capture was taken, less the orchestration, which a range rendered
-        // under this capture pushes as PushSnapshot says.
+        // under this capture pushes under everything else, as FiberContextSpine pushes a stamp's.
         internal readonly List<KeyValuePair<object, object>> Tops;
         // A Portal's children in the render that reached it; null for a list.
         internal readonly VNode?[]? Children;
@@ -115,15 +115,12 @@ namespace Velvet
             Children = children;
         }
 
-        // Every entry of snapshot where the Providers above the owner are not on the cursor (a spine that found no node
-        // for a fiber on its way down), else only the enter flags, which nothing rebuilds: motion.md keeps a presence
-        // child's initial: false for as long as the child stays. Each key pushed goes into pushedKeys for the pop.
+        // Each key pushed goes into pushedKeys for the pop.
         internal static void PushSnapshot(
-            ComponentContextStack stack, List<KeyValuePair<object, object>> snapshot, bool all, List<object> pushedKeys)
+            ComponentContextStack stack, List<KeyValuePair<object, object>> snapshot, List<object> pushedKeys)
         {
             for (var i = 0; i < snapshot.Count; i++)
             {
-                if (!all && !MotionContext.IsEnterFlag(snapshot[i].Key)) continue;
                 stack.PushRaw(snapshot[i].Key, snapshot[i].Value);
                 pushedKeys.Add(snapshot[i].Key);
             }
@@ -187,7 +184,7 @@ namespace Velvet
         internal readonly DetachedRow? Row;
         internal readonly VNode?[]? DescendantNodes;
         // The top value of every context where the fiber was created, less the orchestration
-        // (MotionContext.OutlivingPass), pushed as DetachedHostCapture.PushSnapshot says.
+        // (MotionContext.OutlivingPass), which FiberContextSpine pushes under everything its edges rebuild.
         internal readonly List<KeyValuePair<object, object>> EnclosingSnapshot;
         internal readonly ComponentFiber Anchor;
         internal readonly bool RootProviderChildrenStartAtWalkRoot;

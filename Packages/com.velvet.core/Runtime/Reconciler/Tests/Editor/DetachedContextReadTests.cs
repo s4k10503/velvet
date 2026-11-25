@@ -460,8 +460,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base mounts these rows under the whole snapshot of the list.
-        // What this pins is that the enter flags still reach them now that a capture holds only what the host put
-        // around the list: drop the scope's push of the capture's EnterFlags and the row enters.
+        // What this pins is that the enter flags still reach them now that what a capture pushes on top is only what
+        // the host put around the list: push no snapshot of the capture under the range's spine and the row enters.
         [Test]
         public void Given_AListInAPresenceChildCreatedUnderInitialFalse_When_AScrollMountsARowMotion_Then_ThatMotionDoesNotEnter()
         {
@@ -496,10 +496,10 @@ namespace Velvet.Tests
             Assert.That(s_reading, Is.EqualTo("inside"));
         }
 
-        // GREEN_ON_BASE(characterization): the base pushes the child's whole snapshot whether or not the spine found its way.
-        // What this pins is that it still does where an edge above finds no node for its child, which the exiting
-        // presence child holding the Portal's declarer is: push only the enter flags there and the child reads the
-        // context's default.
+        // GREEN_ON_BASE(characterization): the base pushes the child's whole snapshot over whatever the spine found.
+        // What this pins is that the snapshot still answers where an edge above finds no node for its child, which
+        // the exiting presence child holding the Portal's declarer is: push no stamp snapshot under the spine and the
+        // child reads the context's default.
         [Test]
         public void Given_APortalDeclaredInsideAnExitingPresenceChild_When_ThePortalsChildReRendersAlone_Then_ItStillReadsTheProviderAboveThePresence()
         {
@@ -518,9 +518,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base mounts a scroll's rows over the whole snapshot of the list.
-        // What this pins is that it still does where the spine to the list's host finds no node for it, which the
-        // exiting presence child holding the host is: push only the capture's enter flags there and the row reads the
-        // context's default.
+        // What this pins is that the snapshot still answers where the spine to the list's host finds no node for it,
+        // which the exiting presence child holding the host is: push no snapshot of the capture under the range's
+        // spine and the row reads the context's default.
         [Test]
         public void Given_AListWhoseHostIsInAnExitingPresenceChild_When_AScrollMountsARow_Then_TheRowReadsTheProviderAboveThePresence()
         {
