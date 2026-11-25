@@ -6,8 +6,8 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // One occurrence of a node whose children mount outside the walk that reaches it: a V.VirtualList, whose
-    // controller owns it, or a V.Portal / V.WorldSpace, found by its placeholder. Each walk that reaches the node
-    // captures what the cursor holds around it within the frame (ComponentContextStack.EnterFrame) — the Providers
+    // controller owns it, or a V.Portal / V.WorldSpace, found by its placeholder. A walk that creates or patches the
+    // node captures what the cursor holds around it within the frame (ComponentContextStack.EnterFrame) — the Providers
     // the owner's own output, or an enclosing host's children, put there — rather than what lies above the owner,
     // which FiberContextSpine rebuilds from committed outputs. A render of a detached child reads the capture
     // Resolve picks, which passes over the capture of a render that was not committed while the owner holds one

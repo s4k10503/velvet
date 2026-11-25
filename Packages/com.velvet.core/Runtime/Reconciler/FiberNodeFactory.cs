@@ -609,7 +609,7 @@ namespace Velvet
             var bridge = _ctx.ReconcilerBridge;
             // Capture the host fiber rendering this list and what the live cursor holds around it (correct
             // mid-reconcile, in this commit walk) so the controller can mount items under the host's shared
-            // context — its items render later, outside any reconcile pass, where the cursor is empty.
+            // context — the rows a scroll renders mount outside any reconcile pass, where the cursor is empty.
             var detachedHost = new DetachedHost(_ctx.FiberStack.Current);
             detachedHost.Capture(_ctx, null);
             var controller = new FiberVirtualListController(

@@ -7,10 +7,10 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins that every render of a <c>V.VirtualList</c> row or a <c>V.Portal</c> child, and of what renders under
-    /// either, reads the nearest Provider above it as it currently is. A row or child that re-renders on its own reads
+    /// Pins renders of a <c>V.VirtualList</c> row or a <c>V.Portal</c> child, and of what renders under either, that
+    /// read the nearest Provider above it as it currently is. A row or child that re-renders on its own reads
     /// the new value of a Provider above a memoized host that bailed, and the new value its host put around the list
-    /// or Portal; a row a scroll mounts reads the Provider its host put around the list rather than a farther one of
+    /// or Portal, or the list's renderer around the row; a row a scroll mounts reads the Provider its host put around the list rather than a farther one of
     /// the same context; and a parked pass resuming, an error boundary's fallback and a Portal's first render read the
     /// current value where a row or a Portal encloses them.
     /// </summary>

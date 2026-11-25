@@ -51,7 +51,7 @@ namespace Velvet
         void RefreshHasVariantsForController(VisualElement container);
 
         // Brackets a controller's item create/patch loop so the items inherit the context that encloses the
-        // V.VirtualList. Items mount outside the reconcile pass (scroll / geometry callbacks), where the
+        // V.VirtualList. Items a scroll or a geometry change renders mount outside any reconcile pass, where the
         // context cursor is empty and FiberStack.Current is null — which would give each item fiber a null
         // parent and hence its own fresh, empty ReconcilerContext. Begin pushes the host fiber that rendered
         // the list onto FiberStack (so item fibers parent under it and share its context), puts what encloses the
@@ -70,8 +70,8 @@ namespace Velvet
         // DescendantNodes is THIS item's rendered vnode and whose Row is the row's own — so an isolated re-render
         // can rebuild not just the list's enclosing context but also any Provider the renderer placed above the
         // item's consumer (the VirtualList parallel to Portal's drained-children walk). Call once per item, after
-        // its create/patch; reused items add no fibers, so the per-item set diff stamps nothing for them. No-op
-        // when host is null.
+        // its create/patch; the per-item set diff stamps only the fibers that create or patch added. No-op when host
+        // is null.
         void StampDetachedItemFibers(ComponentFiber? host, DetachedRow row, VNode itemVnode, object? scopeToken);
 
         void EndDetachedItemScope(ComponentFiber? host, object? scopeToken);

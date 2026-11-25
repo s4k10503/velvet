@@ -868,7 +868,7 @@ namespace Velvet
             {
                 _ctx.FiberStack.Pop();
                 // Fallback for any item fiber not stamped per-item (StampDetachedItemFibers moves the cursor past
-                // the ones it handled): only the list's capture is replayed, with no item-vnode walk.
+                // the ones it handled): its edge walks no item vnode.
                 DetachedMountContext? detached = null;
                 foreach (var f in host.AppendedSince(scope.Unstamped))
                 {
