@@ -162,10 +162,10 @@ namespace Velvet
             }
         }
 
-        // A Provider reached as a node-typed keyed entry (e.g. inside an AnimatePresence subtree, or as a MemoNode's
-        // resolved inner), on a path where GeneralPathReconciler.ExpandInlineRecursive's inline Provider expansion
-        // does not apply: the new value is pushed, and a changed one propagated, before the children reconcile
-        // under it.
+        // A Provider patched as a node of its own, which a VirtualList row's item node is
+        // (FiberNodeFactory.CreateForContextProviderNode is reached the same way), where
+        // GeneralPathReconciler.ExpandInlineRecursive's inline Provider expansion does not apply: the new value is
+        // pushed, and a changed one propagated, before the children reconcile under it.
         private void ReconcileUnderProvider(in FiberNodePatcher.SelfPatch patch)
         {
             var oldNode = (ContextProviderNode)patch.OldNode!;
