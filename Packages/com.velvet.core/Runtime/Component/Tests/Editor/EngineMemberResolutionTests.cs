@@ -47,7 +47,7 @@ namespace Velvet.Tests
         public void Given_TheEnginesRunningAnimationFlag_When_ItsGetterIsBoundAsAnOpenInstanceDelegate_Then_ItBinds()
         {
             // Act
-            var bound = BoundDelegate("Any");
+            var bound = BoundDelegate("s_any");
 
             // Assert
             Assert.That(bound, Is.Not.Null, "VisualElement.hasRunningAnimations did not bind as Func<VisualElement, bool>");
@@ -57,7 +57,7 @@ namespace Velvet.Tests
         public void Given_TheEnginesRunningAnimationTest_When_BoundOverTheIntItsPropertyIdIsHeldAs_Then_ItBinds()
         {
             // Act
-            var bound = BoundDelegate("Of");
+            var bound = BoundDelegate("s_of");
 
             // Assert
             Assert.That(bound, Is.Not.Null,

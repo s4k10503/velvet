@@ -22,9 +22,8 @@ namespace Velvet
     /// trickle-down handler of the element's own, which stops the run, start and cancel events ahead of the element's
     /// bubbling listeners
     /// (Given_AnElementTransitioningAll_When_ItsJustifyContentIsWrittenInline_Then_ItHearsNoTransitionEventForIt).
-    /// The hold hears a run event only after the element's listeners, so on an element nothing has marked yet the cancel
-    /// it makes leaves the events as UI Toolkit sends them
-    /// (Given_AnApplicationRuleGivingTheFirstTransition_When_TheJustifyContentClassChanges_Then_TheElementHearsItsRunStartAndCancel).
+    /// One on an element nothing has marked yet is cancelled from its run event where that reaches the hold, which marks
+    /// the element.
     /// </remarks>
     internal static class StyleTransitionBehavior
     {
@@ -265,7 +264,7 @@ namespace Velvet
 
         /// <summary>
         /// The element is torn down (FiberElementCleaner), its field's input box with it, so a pooled element carries
-        /// no watch and no transition-discrete decision into its next use.
+        /// no transition-discrete decision into its next use, and of its watch only what Forget keeps.
         /// </summary>
         internal static void Unwatch(VisualElement element)
         {
@@ -276,16 +275,21 @@ namespace Velvet
             }
         }
 
-        // The stopped entries are kept, so that the next consumer of a pooled element hears no cancel event of a run
+        // The stopped entries are kept, and while any is the handler that stops their cancel events, so that the next
+        // consumer of a pooled element, whether or not anything watches it, hears no cancel event of a run OnRunHere
         // cancelled before the pool handed it out
-        // (Given_APooledLabelTornDownBeforeTheCancelEventOfItsRunEventCancelIsSent_When_ItsNextConsumerIsRendered_Then_ThatConsumerHearsNoCancelEvent).
+        // (Given_APooledLabelTornDownBeforeTheCancelEventOfItsRunEventCancelIsSent_When_ItsNextConsumerIsRendered_Then_ThatConsumerHearsNoCancelEvent,
+        // Given_APooledLabelTornDownBeforeTheCancelEventOfItsRunEventCancelIsSent_When_ANextConsumerNothingTimesIsRendered_Then_ThatConsumerHearsNoCancelEvent).
         private static void Forget(VisualElement element)
         {
             s_allowed.Remove(element);
             element.UnregisterCallback(s_onRestyled, TrickleDown.TrickleDown);
             element.UnregisterCallback(s_onRunHere, TrickleDown.TrickleDown);
             element.UnregisterCallback(s_onStartHere, TrickleDown.TrickleDown);
-            element.UnregisterCallback(s_onCancelHere, TrickleDown.TrickleDown);
+            if (!s_stopped.TryGetValue(element, out var stopped) || stopped.Count == 0)
+            {
+                element.UnregisterCallback(s_onCancelHere, TrickleDown.TrickleDown);
+            }
             element.RemoveFromClassList(WatchClass);
         }
 
@@ -298,11 +302,11 @@ namespace Velvet
         // Sent in every style pass restyling a watched element, so the element's one running-animation flag is read
         // first, through RunningStyleAnimations.Any, which the editor's suites measure adding no allocation to such a pass
         // (Given_AWatchedElementATransitionRunsOn_When_AClassNoRuleNamesToggles_Then_ItsStylePassesAllocateAsAnUnwatchedOnesDo).
-        // Where the runtime refuses that delegate the cancel waits for the run event, rather than allocating on each pass.
+        // Where it answers null the cancel waits for the run event, rather than allocating on each pass
+        // (Given_ARunningAnimationFlagThatThrows_When_AWatchedElementsJustifyContentClassChanges_Then_TheNextAnimationUpdateLandsTheNewValue).
         private static void OnRestyled(CustomStyleResolvedEvent evt)
         {
-            if (evt.currentTarget is not VisualElement element || RunningStyleAnimations.Any is not { } any || !any(element)
-                || !Held(element))
+            if (evt.currentTarget is not VisualElement element || RunningStyleAnimations.Any(element) is not true || !Held(element))
             {
                 return;
             }
@@ -327,8 +331,9 @@ namespace Velvet
             return false;
         }
 
-        // Decided once for each transition, by the first of OnRestyled, OnRunHere and OnRun to reach it: a cancel unless
-        // transition-discrete applies then.
+        // The first of OnRestyled, OnRunHere and OnRun to reach a transition decides it: a cancel unless transition-discrete
+        // applies then. Where it applies, the transition's start and end are kept, and an ask about a transition with
+        // both is answered as that one was until an ask about one without them.
         private static bool CancelUnlessAllowed(VisualElement element, StylePropertyName name)
         {
             DropStale(element, name);
@@ -477,22 +482,21 @@ namespace Velvet
         }
 
         // Through RunningStyleAnimations.Of, and by invoking the method, which boxes what it returns, only where that
-        // delegate is refused.
+        // answers null (Given_ARunningAnimationTestThatThrows_When_AWatchedElementsJustifyContentClassChanges_Then_TheStylePassThatRestylesItLandsTheNewValue).
         private static bool Runs(VisualElement element, object?[] arguments, int id)
         {
-            if (RunningStyleAnimations.Of is { } of)
+            if (RunningStyleAnimations.Of(element, id) is { } runs)
             {
-                return of(element, id);
+                return runs;
             }
             try
             {
-                // MUTANT_SURVIVES(unreachable, equality): RunningStyleAnimations.Of binds in the editor the suites run in (EngineMemberResolutionTests).
                 return s_runs != null && s_runs.Invoke(element, arguments) is true;
             }
             catch (Exception exception) when (exception is TargetInvocationException or TargetException
                 or ArgumentException or MemberAccessException or NotSupportedException)
             {
-                // MUTANT_SURVIVES(unreachable, literal): RunningStyleAnimations.Of binds in the editor the suites run in (EngineMemberResolutionTests).
+                // MUTANT_SURVIVES(unreachable, literal): reached only where the engine's HasRunningAnimation throws, which nothing the suites drive makes it do.
                 return false;
             }
         }

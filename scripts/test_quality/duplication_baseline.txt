@@ -154,7 +154,7 @@ b4ea0c6ca69d	Runtime/Styling/StyleStructuralVariantClass.cs,Runtime/Styling/Styl
 b7d1b2a93e98	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 b8fec61b1274	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 b96e63847524	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
-b9ad3c4c8fc8	Runtime/Styling/RunningStyleTransition.cs,Runtime/Styling/StyleCascade.cs
+b9ad3c4c8fc8	Runtime/EngineMember.cs,Runtime/Styling/RunningStyleTransition.cs,Runtime/Styling/StyleCascade.cs
 b9bdeac538e9	Runtime/Reconciler/FiberSliderKeyboard.cs,Runtime/Styling/StyleArbitraryValueResolver.cs
 b9c523114335	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
 bae03dca3a92	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleTextItemManipulator.cs

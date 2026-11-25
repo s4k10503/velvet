@@ -156,10 +156,9 @@ namespace Velvet
         // False where no transition of the corner runs for the element, read through RunningStyleAnimations.Of, the test
         // Find makes, so that the read every pass makes of a holder whose radii run on no transition boxes nothing
         // (Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated). True, leaving the answer to
-        // Find, where that delegate is not bound or a corner's id does not resolve.
+        // Find, where that read answers null or a corner's id does not resolve.
         private static bool MayRun(VisualElement element, int corner)
-            // MUTANT_SURVIVES(unreachable, literal): the editor the suites run in binds RunningStyleAnimations.Of and resolves every corner's id, which Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated reads.
-            => s_cornerIdsResolve && RunningStyleAnimations.Of is { } runs ? runs(element, s_cornerIdValues[corner]) : true;
+            => !s_cornerIdsResolve || (RunningStyleAnimations.Of(element, s_cornerIdValues[corner]) ?? true);
 
         private static readonly int[] s_cornerIdValues = Array.ConvertAll(s_cornerIds, id => id == null ? 0 : Convert.ToInt32(id));
 

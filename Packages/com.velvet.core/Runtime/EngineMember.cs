@@ -796,14 +796,15 @@ namespace Velvet
 
         internal TMethod? ResolveOpenDelegate<TMethod>() where TMethod : Delegate => Bound<TMethod>(ResolveMethod());
 
+        // Any exception: one escaping here fails the static initializer of RunningStyleAnimations, which holds the
+        // delegates, and with it every read of either.
         private static TDelegate? Bound<TDelegate>(MethodInfo? method) where TDelegate : Delegate
         {
             try
             {
                 return method == null ? null : (TDelegate)Delegate.CreateDelegate(typeof(TDelegate), method);
             }
-            catch (Exception exception) when (exception is ArgumentException or MemberAccessException
-                or MissingMethodException or NotSupportedException)
+            catch (Exception)
             {
                 return null;
             }

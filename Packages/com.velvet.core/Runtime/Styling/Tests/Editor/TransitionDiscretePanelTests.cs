@@ -31,6 +31,7 @@ namespace Velvet.Tests
         private const Justify NoneRan = (Justify)(-1);
 
         private readonly List<MountedTree> _mounts = new();
+        private readonly List<(FieldInfo Field, object Bound)> _reads = new();
         private StyleSheet _sheet;
         private double _now;
 
@@ -38,6 +39,11 @@ namespace Velvet.Tests
 
         public override void TearDown()
         {
+            foreach (var (field, bound) in _reads)
+            {
+                field.SetValue(null, bound);
+            }
+            _reads.Clear();
             VelvetTheme.IsDark = false;
             foreach (var mount in _mounts)
             {
@@ -726,25 +732,6 @@ namespace Velvet.Tests
             Assert.That(landed, Is.EqualTo(Justify.FlexEnd));
         }
 
-        // GREEN_ON_BASE(characterization): the base cancels from the hold's run handler, after the element's listeners.
-        // Recording the cancel StyleTransitionBehavior.OnRun makes among the stopped ones reddens this case.
-        [Test]
-        public void Given_AnApplicationRuleGivingTheFirstTransition_When_TheJustifyContentClassChanges_Then_TheElementHearsItsRunStartAndCancel()
-        {
-            // Arrange — two updates, so that the cancel event the first one queues is sent as well.
-            AttachSheet(".app-justify { transition-property: justify-content; transition-duration: 1s; }");
-            var element = Mounted("app-justify justify-start");
-            var heard = On(element);
-            Swap(element, "justify-start", "justify-end");
-
-            // Act
-            RunAQuarterSecond(element);
-            RunAQuarterSecond(element);
-
-            // Assert
-            Assert.That(heard.Justify, Is.EqualTo(3));
-        }
-
         [Test]
         public void Given_AnApplicationRuleThatRanATransition_When_TheJustifyContentClassChangesAgain_Then_TheStylePassThatRestylesItLandsTheNewValue()
         {
@@ -1032,13 +1019,83 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APooledLabelTornDownBeforeTheCancelEventOfItsRunEventCancelIsSent_When_ANextConsumerNothingTimesIsRendered_Then_ThatConsumerHearsNoCancelEvent()
+        {
+            // Arrange — as in the case before, but no class or value of the next consumer's gives it a transition, so
+            // nothing watches it.
+            VNodePoolTestAccess.ClearLabelPoolForTest();
+            var root = NewRoot();
+            var mounted = Mount(root, LabelIn("first", "transition-all"));
+            var first = Attached(root.Q<Label>("first"));
+            first.style.justifyContent = Justify.FlexEnd;
+            RunAQuarterSecond(first);
+            mounted.Render(V.Div());
+            mounted.Render(V.Div(children: new VNode[] { V.Label(name: "second", text: "second") }));
+            var second = root.Q<Label>("second");
+            var heard = On(second);
+
+            // Act
+            RunAQuarterSecond(second);
+
+            // Assert — -1 where the pool did not hand the label back.
+            Assert.That(ReferenceEquals(first, second) ? heard.JustifyCancels : -1, Is.EqualTo(0));
+        }
+
+        // Binds a delegate that throws in place of one of RunningStyleAnimations' reads, until TearDown puts the bound
+        // one back; false where there is no such read, which RunningStyleAnimations is reached by name to allow.
+        private bool Throwing(string field, Delegate throwing)
+        {
+            var read = typeof(V).Assembly.GetType("Velvet.RunningStyleAnimations")
+                ?.GetField(field, BindingFlags.NonPublic | BindingFlags.Static);
+            if (read == null)
+            {
+                return false;
+            }
+            _reads.Add((read, read.GetValue(null)));
+            read.SetValue(null, throwing);
+            return true;
+        }
+
+        [Test]
+        public void Given_ARunningAnimationFlagThatThrows_When_AWatchedElementsJustifyContentClassChanges_Then_TheNextAnimationUpdateLandsTheNewValue()
+        {
+            // Arrange
+            var element = Mounted("transition-all justify-start " + OneSecond);
+            var replaced = Throwing("s_any", (Func<VisualElement, bool>)(_ => throw new InvalidOperationException()));
+            Swap(element, "justify-start", "justify-end");
+
+            // Act
+            var landed = AfterTheNextAnimationUpdate(element);
+
+            // Assert — NoneRan where there was no read to replace.
+            Assert.That(replaced ? landed : NoneRan, Is.EqualTo(Justify.FlexEnd));
+        }
+
+        [Test]
+        public void Given_ARunningAnimationTestThatThrows_When_AWatchedElementsJustifyContentClassChanges_Then_TheStylePassThatRestylesItLandsTheNewValue()
+        {
+            // Arrange
+            var element = Mounted("transition-all justify-start opacity-100 " + OneSecond);
+            var replaced = Throwing("s_of", (Func<VisualElement, int, bool>)((_, _) => throw new InvalidOperationException()));
+            Swap(element, ("justify-start", "justify-end"), ("opacity-100", "opacity-0"));
+
+            // Act
+            var landed = AfterTheStylePass(element);
+
+            // Assert — NoneRan where there was no read to replace.
+            Assert.That(replaced ? landed : NoneRan, Is.EqualTo(Justify.FlexEnd));
+        }
+
+        [Test]
         public void Given_AWatchedElementATransitionRunsOn_When_AClassNoRuleNamesToggles_Then_ItsStylePassesAllocateAsAnUnwatchedOnesDo()
         {
-            // Arrange — both run an opacity transition, the watched one's given by a utility and the other's by an
-            // application rule, which watches nothing before the element's first run event.
-            AttachSheet(".app-fade { transition-property: opacity; transition-duration: 1s; }");
+            // Arrange — both run an opacity transition under transition-property `all`, the watched one's given by
+            // utilities and the other's by an application rule, which watches nothing before the element's first run
+            // event. `all` on both, since a restyle under it allocates where one under `opacity` alone does not (the
+            // case after this one).
+            AttachSheet(".app-all { transition-property: all; transition-duration: 1s; transition-timing-function: linear; }");
             var watchedElement = Mounted("transition-all opacity-100 " + OneSecond);
-            var unwatchedElement = Mounted("app-fade opacity-100");
+            var unwatchedElement = Mounted("app-all opacity-100");
             Swap(watchedElement, "opacity-100", "opacity-0");
             Swap(unwatchedElement, "opacity-100", "opacity-0");
             ForcePanelUpdate(watchedElement.panel);
@@ -1056,10 +1113,35 @@ namespace Velvet.Tests
             Assert.That(canary > 0 && apart ? extra : -1, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the engine's restyle under `all` is the base's as well.
+        // Nothing in Velvet reddens this case: it fails when a restyle UI Toolkit makes under `all` of an element running
+        // a transition stops allocating more than one under `opacity` alone.
+        [Test]
+        public void Given_TwoUnwatchedElementsRunningAnOpacityTransition_When_AClassNoRuleNamesToggles_Then_TheOneUnderTransitionPropertyAllAllocatesMore()
+        {
+            // Arrange — application rules, which watch nothing before an element's first run event.
+            AttachSheet(".app-all { transition-property: all; transition-duration: 1s; transition-timing-function: linear; }"
+                + " .app-fade { transition-property: opacity; transition-duration: 1s; transition-timing-function: linear; }");
+            var underAll = Mounted("app-all opacity-100");
+            var underOpacity = Mounted("app-fade opacity-100");
+            Swap(underAll, "opacity-100", "opacity-0");
+            Swap(underOpacity, "opacity-100", "opacity-0");
+            ForcePanelUpdate(underAll.panel);
+            var all = Toggled(underAll);
+            var opacity = Toggled(underOpacity);
+            var running = Runs(underAll, "opacity") && Runs(underOpacity, "opacity");
+
+            // Act
+            var extra = GCAllocationProbe.MedianBlocksDuring(all) - GCAllocationProbe.MedianBlocksDuring(opacity);
+
+            // Assert — -1 where either transition is not running.
+            Assert.That(running ? extra : -1, Is.GreaterThan(0));
+        }
+
         [Component]
         private static VNode LeafHost() => V.Div(children: new VNode[]
         {
-            Hooks.UseStore(s_shown, shown => shown) ? V.Div(name: "leaf", className: "transition-all") : null,
+            Hooks.UseStore(s_shown, shown => shown) ? V.Div(name: "leaf", className: "transition-all " + OneSecond) : null,
         });
 
         [Test]
@@ -1078,6 +1160,29 @@ namespace Velvet.Tests
 
             // Assert — -1 where nothing registered one while the element was rendered.
             Assert.That(watched ? CallbackRegistryProbe.TrickleDownCallbackCount(leaf) : -1, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AnElementWhoseRunEventCancelHadItsCancelEventStopped_When_ItIsRemoved_Then_ItKeepsNoStyleCallbackOnItsWayDown()
+        {
+            // Arrange — the write's run is cancelled at the update a quarter second in, and its cancel event, sent at the
+            // next, stopped.
+            s_shown = new Shown();
+            var root = NewRoot();
+            var mounted = Mount(root, V.Component(LeafHost, key: "host"));
+            var leaf = Attached(root.Q<VisualElement>("leaf"));
+            leaf.style.justifyContent = Justify.FlexEnd;
+            var started = Runs(leaf);
+            RunAQuarterSecond(leaf);
+            RunAQuarterSecond(leaf);
+            var watched = CallbackRegistryProbe.TrickleDownCallbackCount(leaf) > 0;
+
+            // Act
+            s_shown.Hide();
+            mounted.FlushStateForTest();
+
+            // Assert — -1 where the write started no transition or nothing registered one while the element was rendered.
+            Assert.That(started && watched ? CallbackRegistryProbe.TrickleDownCallbackCount(leaf) : -1, Is.EqualTo(0));
         }
 
         [Component]
