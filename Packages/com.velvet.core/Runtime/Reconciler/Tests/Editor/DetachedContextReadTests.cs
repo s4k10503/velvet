@@ -36,6 +36,7 @@ namespace Velvet.Tests
         private static StateUpdater<string> s_setTheme;
         private static StateUpdater<string> s_setHostValue;
         private static VisualElement s_portalTarget;
+        private static VNode s_shell;
         private static ComponentFiber s_slicedListFiber;
         private static int s_generation;
 
@@ -46,6 +47,7 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             s_portalTarget = new VisualElement();
+            s_shell = V.Div(name: "shell", children: new VNode[] { RowList(ReaderRow) });
             s_rowReadings.Clear();
             s_rowFibers.Clear();
             s_reading = null;
@@ -124,6 +126,22 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
+            Assert.That(s_reading, Is.EqualTo("second"));
+        }
+
+        [Test]
+        public void Given_AHostThatPutsANewValueAroundTheSameElementHoldingAList_When_AScrollThenMountsARow_Then_TheRowReadsTheNewValue()
+        {
+            // Arrange — the host hands back one element instance around the list, and no row is mounted to read the
+            // Provider when its value changes.
+            using var mounted = V.Mount(_root, V.Component(HostWithItsOwnValueAroundOneShellRender, key: "host"));
+            s_setHostValue.Invoke("second");
+            mounted.FlushStateForTest();
+
+            // Act
+            RenderRange(mounted);
+
+            // Assert — null where no row rendered.
             Assert.That(s_reading, Is.EqualTo("second"));
         }
 
@@ -304,6 +322,14 @@ namespace Velvet.Tests
             var (value, setValue) = Hooks.UseState("first");
             s_setHostValue = setValue;
             return RowList(item => V.Provider(s_theme, value, new VNode[] { V.Component(ReaderRender, key: item) }));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode HostWithItsOwnValueAroundOneShellRender()
+        {
+            var (value, setValue) = Hooks.UseState("first");
+            s_setHostValue = setValue;
+            return V.Provider(s_theme, value, new[] { s_shell });
         }
 
         [Component(Compiler = false)]

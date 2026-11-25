@@ -1017,10 +1017,13 @@ namespace Velvet
         // Skipping a node the parent handed back by instance leaves every component in its subtree unreached, which
         // drops the render this pass owes one with work pending. Where the reconciling fiber is marked
         // (FiberPendingWork), or owes a Portal its retarget (OwesPortalRetarget), this reconcile skips
-        // only a node nothing below can be rendered by a fiber, and patches every other.
+        // only a node nothing below can be rendered by a fiber, and patches every other. Where a Provider of this walk,
+        // or of one around it, has changed value, it patches a node holding a Portal or a list too, whose capture
+        // (DetachedHost.Capture) is taken only where a walk reaches it.
         private bool SkipsIdentical(VNode? node)
             => !FiberPendingWork.MayHoldFiber(node)
-                || _ctx.FiberStack.Current is not { PendingWorkBelow: true } && !OwesPortalRetarget(_ctx.FiberStack.Current);
+                || _ctx.FiberStack.Current is not { PendingWorkBelow: true } && !OwesPortalRetarget(_ctx.FiberStack.Current)
+                    && !(_ctx.ContextValueChanged && DetachedHost.HeldIn(node));
 
         // Read from the Portal entries, which clear ChildrenPending where the patch that mounts the children completes,
         // so a parked, aborted or subsumed reconcile of the fiber keeps patching until then. A fiber none of whose
