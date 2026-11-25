@@ -161,11 +161,11 @@ namespace Velvet
             _children = children != null ? new WeakReference<VNode?[]>(children) : null;
         }
 
-        // The owner output the walk was expanding; null once nothing else holds it, or for a capture taken under an
+        // The owner output the walk was expanding; null once it has been collected, or for a capture taken under an
         // enclosing host's.
         internal VNode?[]? Tree => _tree != null && _tree.TryGetTarget(out var tree) ? tree : null;
 
-        // A Portal's children in the render that reached it, while that render's output is held; null for a list.
+        // A Portal's children in the render that reached it; null once collected, and for a list.
         internal VNode?[]? Children => _children != null && _children.TryGetTarget(out var children) ? children : null;
 
         // Each key pushed goes into pushedKeys for the pop.
@@ -198,8 +198,8 @@ namespace Velvet
     }
 
     // The item node a VirtualList row was created or patched with, against the list's capture current then, so the
-    // row's own render walks the node of the render its list resolves to. A node is kept only while the list still
-    // holds the capture it was noted against, and the latest whatever it was noted against.
+    // row's own render walks the node of the render its list resolves to. A node noted against a capture the list no
+    // longer holds is dropped at the row's next note or read, the latest kept whatever it was noted against.
     internal sealed class DetachedRow
     {
         private readonly List<(DetachedHostCapture? Under, VNode?[] Nodes)> _nodes = new(1);
