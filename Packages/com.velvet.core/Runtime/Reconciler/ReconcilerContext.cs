@@ -221,7 +221,6 @@ namespace Velvet
             return on.LastEnd;
         }
 
-        // Moves every range on target by delta.
         internal void ShiftOn(VisualElement target, int delta)
         {
             if (!_rangesOn.TryGetValue(target, out var on)) return;
