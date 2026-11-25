@@ -35,6 +35,10 @@ namespace Velvet.Tests
         private static readonly StateUpdater<int>[] s_setOwnerTicks = new StateUpdater<int>[PortalOwners];
 
         private static string s_reading;
+        private static string s_lastReading;
+        private static StateUpdater<int> s_setLastReader;
+        private static StateUpdater<string> s_setDeclaredValue;
+        private static StateUpdater<IReadOnlyList<string>> s_setSharedItems;
         private static string s_fallbackReading;
         private static string s_portalReading;
         private static StateUpdater<int> s_setReader;
@@ -71,6 +75,10 @@ namespace Velvet.Tests
             s_rowReadings.Clear();
             s_rowFibers.Clear();
             s_reading = null;
+            s_lastReading = null;
+            s_setLastReader = default;
+            s_setDeclaredValue = default;
+            s_setSharedItems = default;
             s_fallbackReading = null;
             s_portalReading = null;
             s_setReader = default;
@@ -288,6 +296,82 @@ namespace Velvet.Tests
 
             // Assert — null where the pass did not abort or the host kept a tree other than the one from before it.
             Assert.That(HostKeptTheValue("a2") ? s_reading : null, Is.EqualTo("v2"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base pushes the child's whole snapshot over whatever the spine found.
+        // What this pins is that the spine does not place the declarer at another occurrence of its own node: take
+        // the first occurrence and the child reads the Provider around the other.
+        [Test]
+        public void Given_OneDeclarerNodePlacedUnderTwoProviders_When_ThePortalChildOfTheSecondRendersAlone_Then_ItReadsTheSecondsProvider()
+        {
+            // Arrange — the second declarer's Portal mounts last, so its child is the last reader rendered.
+            using var mounted = V.Mount(_root, V.Component(OuterOverSharedNodeRender, SharedNode.Declarer, key: "root"));
+            s_lastReading = null;
+
+            // Act
+            s_setLastReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the child did not render.
+            Assert.That(s_lastReading, Is.EqualTo("b"));
+        }
+
+        [Test]
+        public void Given_OneDeclarerNodePlacedUnderTwoProviders_When_TheSecondChangesTheValueAroundItsPortal_Then_ItsChildRenderingAloneReadsTheNewValue()
+        {
+            // Arrange — the second declarer renders last, so the setter kept is its own.
+            using var mounted = V.Mount(_root, V.Component(OuterOverSharedNodeRender, SharedNode.ValuedDeclarer, key: "root"));
+            s_setDeclaredValue.Invoke("declared-second");
+            mounted.FlushStateForTest();
+            s_lastReading = null;
+
+            // Act
+            s_setLastReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the child did not render.
+            Assert.That(s_lastReading, Is.EqualTo("declared-second"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base pushes the row's whole snapshot over whatever the spine found.
+        // What this pins is the same for a row of a list whose host is one node placed twice: take the first
+        // occurrence and the row reads the Provider around the other.
+        [Test]
+        public void Given_OneListHostNodePlacedUnderTwoProviders_When_ARowOfTheSecondRendersAlone_Then_ItReadsTheSecondsProvider()
+        {
+            // Arrange — only the second list is laid out, so the row the items' arrival renders is its, under the
+            // second Provider.
+            using var mounted = V.Mount(_root, V.Component(OuterOverSharedNodeRender, SharedNode.ListHost, key: "root"));
+            LayOutViewport(mounted, _root.Query<ScrollView>().ToList()[1]);
+            s_setSharedItems.Invoke(s_oneItem);
+            mounted.FlushStateForTest();
+            s_lastReading = null;
+
+            // Act
+            s_setLastReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the row did not render.
+            Assert.That(s_lastReading, Is.EqualTo("b"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base pushes the child's whole snapshot over whatever the spine found.
+        // What this pins is the stamp going on again at the second edge the spine cannot place: put it on only at the
+        // first and the child reads the Provider found between the two.
+        [Test]
+        public void Given_TwoNodesEachPlacedTwiceOneUnderTheOther_When_ThePortalChildOfTheLastRendersAlone_Then_ItReadsTheProviderAroundTheLast()
+        {
+            // Arrange — the declarer node is placed twice by each placement of a component that is itself placed twice
+            // under a Provider of the same context between them.
+            using var mounted = V.Mount(_root, V.Component(OuterOverSharedNodeRender, SharedNode.Stacked, key: "root"));
+            s_lastReading = null;
+
+            // Act
+            s_setLastReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the child did not render.
+            Assert.That(s_lastReading, Is.EqualTo("d"));
         }
 
         // GREEN_ON_BASE(characterization): the base skips the list the host hands back by instance.
@@ -518,12 +602,87 @@ namespace Velvet.Tests
 
         // The viewport height a geometry pass would have left, without which the host's update renders no range
         // (FiberVirtualListController.ForceRefresh), so the rows are never handed the renderer's new node.
-        private void LayOutViewport(MountedTree mounted)
+        private void LayOutViewport(MountedTree mounted) => LayOutViewport(mounted, _root.Q<ScrollView>());
+
+        private static void LayOutViewport(MountedTree mounted, ScrollView scrollView)
             => typeof(FiberVirtualListController)
                 .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()], 200f);
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[scrollView], 200f);
 
         #region Components
+
+        private enum SharedNode
+        {
+            Declarer,
+            ValuedDeclarer,
+            ListHost,
+            Stacked,
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OuterOverSharedNodeRender(SharedNode shape)
+            => V.Provider(s_theme, "outer", new VNode[] { V.Component(SharedNodeMidRender, shape, key: "mid") });
+
+        // One node instance, built once per render, placed in two elements under two Providers.
+        [Component(Compiler = false)]
+        private static VNode SharedNodeMidRender(SharedNode shape)
+        {
+            var (items, setItems) = Hooks.UseState<IReadOnlyList<string>>(Array.Empty<string>());
+            s_setSharedItems = setItems;
+            var shared = shape switch
+            {
+                SharedNode.Declarer => V.Component(LastReaderPortalRender, key: "d"),
+                SharedNode.ValuedDeclarer => V.Component(ValuedLastReaderPortalRender, key: "d"),
+                SharedNode.ListHost => V.Component(LastReaderListRender, items, key: "d"),
+                _ => V.Component(BetweenOverSharedDeclarerRender, key: "d"),
+            };
+            return PlacedTwice(shared, "a", "b");
+        }
+
+        private static VNode PlacedTwice(VNode shared, string first, string second)
+            => V.Fragment(children: new VNode[]
+            {
+                V.Div(name: first, children: new VNode[] { V.Provider(s_theme, first, new[] { shared }) }),
+                V.Div(name: second, children: new VNode[] { V.Provider(s_theme, second, new[] { shared }) }),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode BetweenOverSharedDeclarerRender()
+            => V.Provider(s_theme, "between", new VNode[] { V.Component(SharedDeclarerInsideRender, key: "x") });
+
+        [Component(Compiler = false)]
+        private static VNode SharedDeclarerInsideRender()
+            => PlacedTwice(V.Component(LastReaderPortalRender, key: "e"), "c", "d");
+
+        [Component(Compiler = false)]
+        private static VNode LastReaderPortalRender()
+            => V.Portal(s_portalTarget, new VNode[] { V.Component(LastReaderRender, key: "reader") });
+
+        [Component(Compiler = false)]
+        private static VNode ValuedLastReaderPortalRender()
+        {
+            var (value, setValue) = Hooks.UseState("declared-first");
+            s_setDeclaredValue = setValue;
+            return V.Provider(s_theme, value, new VNode[]
+            {
+                V.Portal(s_portalTarget, new VNode[] { V.Component(LastReaderRender, key: "reader") }),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode LastReaderListRender(IReadOnlyList<string> items)
+            => V.VirtualList(items, id => id, itemHeight: 50f, renderer: id => V.Component(LastReaderRender, key: id),
+                overscan: 0);
+
+        // Keeps the setter and the reading of whichever reader rendered last.
+        [Component(Compiler = false)]
+        private static VNode LastReaderRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setLastReader = setTick;
+            s_lastReading = Hooks.UseContext(s_theme);
+            return V.Label(text: s_lastReading + tick);
+        }
 
         private sealed record SlicedRowProps(int Index, int Generation);
 
@@ -927,6 +1086,9 @@ namespace Velvet.Tests
         private static StateUpdater<bool> s_setPresent;
         private static StateUpdater<bool> s_setFlipped;
         private static StateUpdater<string> s_setHostValue;
+        private static StateUpdater<string> s_setInner;
+        private static StateUpdater<string> s_setOuter;
+        private static StateUpdater<string> s_setInside;
         private static ComponentFiber s_presencesFiber;
         private static bool s_fallbackShown;
         private static VisualElement s_portalTarget;
@@ -940,6 +1102,9 @@ namespace Velvet.Tests
             s_setPresent = default;
             s_setFlipped = default;
             s_setHostValue = default;
+            s_setInner = default;
+            s_setOuter = default;
+            s_setInside = default;
             s_presencesFiber = null;
             s_fallbackShown = false;
             s_taggedReadings.Clear();
@@ -965,15 +1130,14 @@ namespace Velvet.Tests
             Assert.That(s_reading, Is.EqualTo("outer"));
         }
 
-        // GREEN_ON_BASE(characterization): the base pushes the child's whole snapshot over whatever the spine found.
-        // What this pins is that the Provider inside the exiting presence child, nearer than the one above the
-        // component rendering the presence, is read: walk only the children the presence is given and the child reads
-        // the farther one.
         [Test]
-        public void Given_APortalDeclaredUnderAProviderInsideAnExitingPresenceChild_When_ThePortalsChildRendersAlone_Then_ItReadsThatProvider()
+        public void Given_APortalDeclaredUnderAProviderInsideAnExitingPresenceChild_When_ThePortalsChildRendersAlone_Then_ItReadsThatProvidersValueNow()
         {
-            // Arrange
+            // Arrange — the Provider's value changes while the child is present, after the Portal's child was created
+            // under the first one, and the exit starts after.
             using var mounted = V.Mount(Root, V.Component(OuterOverLeavingPortalMidRender, key: "outer"));
+            s_setInner.Invoke("inner-second");
+            mounted.FlushStateForTest();
             s_setPresent.Invoke(false);
             mounted.FlushStateForTest();
             s_reading = null;
@@ -982,20 +1146,19 @@ namespace Velvet.Tests
             s_setReader.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(s_reading, Is.EqualTo("inner"));
+            // Assert — null where the child did not render.
+            Assert.That(s_reading, Is.EqualTo("inner-second"));
         }
 
-        // GREEN_ON_BASE(characterization): the base pushes the row's whole snapshot over whatever the spine found.
-        // What this pins is the same read for a row of a list whose host sits under that Provider: walk only the
-        // children the presence is given and the row reads the farther one.
         [Test]
-        public void Given_AListHostUnderAProviderInsideAnExitingPresenceChild_When_AMountedRowRendersAlone_Then_ItReadsThatProvider()
+        public void Given_AListHostUnderAProviderInsideAnExitingPresenceChild_When_AMountedRowRendersAlone_Then_ItReadsThatProvidersValueNow()
         {
-            // Arrange
+            // Arrange — the row is created under the Provider's first value, which changes while the child is present.
             using var mounted = V.Mount(Root, V.Component(OuterOverLeavingListMidRender, key: "outer"));
             mounted.Root.Reconciler.Context.VirtualListControllers[Root.Q<ScrollView>()]
                 .UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            s_setInner.Invoke("inner-second");
+            mounted.FlushStateForTest();
             s_setPresent.Invoke(false);
             mounted.FlushStateForTest();
             s_reading = null;
@@ -1004,8 +1167,8 @@ namespace Velvet.Tests
             s_setReader.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(s_reading, Is.EqualTo("inner"));
+            // Assert — null where the row did not render.
+            Assert.That(s_reading, Is.EqualTo("inner-second"));
         }
 
         [Test]
@@ -1026,18 +1189,17 @@ namespace Velvet.Tests
             Assert.That(s_taggedReadings["second"], Is.EqualTo("second"));
         }
 
-        // GREEN_ON_BASE(characterization): the base pushes the row's whole snapshot over whatever the spine found.
-        // What this pins is that read where the spine cannot place the host: a pass that aborts after expanding both
-        // presences leaves each state's node ahead of the tree the component kept, so neither state is told apart,
-        // and without the stamp over the edges above the row reads the Provider above the component.
         [Test]
         public void Given_AListHostInAnExitingChildOfOneOfTwoPresencesAtOneSlotPath_When_ARowRendersAloneAfterAnAbortedPass_Then_ItReadsTheProviderInsideTheChild()
         {
-            // Arrange — the flip's pass aborts on a ref cleanup that fails in its walk.
+            // Arrange — the value inside the first child changes while it is present, after the row was created; the
+            // flip's pass after the exit aborts on a ref cleanup that fails in its walk, once both presences expanded.
             using var mounted = V.Mount(Root, V.Component(OuterOverAbortingPresencesRender, key: "outer"),
                 CaughtErrors.Unlogged);
             mounted.Root.Reconciler.Context.VirtualListControllers[Root.Q<ScrollView>()]
                 .UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            s_setInner.Invoke("inner-second");
+            mounted.FlushStateForTest();
             s_setPresent.Invoke(false);
             mounted.FlushStateForTest();
             s_setFlipped.Invoke(true);
@@ -1050,7 +1212,7 @@ namespace Velvet.Tests
 
             // Assert — null where the pass did not abort, the component's tree is not the one from before it, or the
             // two states do not share a SlotPath.
-            Assert.That(AbortLeftTwoStatesAtOneSlot(mounted) ? s_reading : null, Is.EqualTo("inner"));
+            Assert.That(AbortLeftTwoStatesAtOneSlot(mounted) ? s_reading : null, Is.EqualTo("inner-second"));
         }
 
         [Test]
@@ -1095,14 +1257,14 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("r0").ClassListContains("opacity-100"), Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base walks the children the Portal had when this child was created.
-        // What this pins is that the walk still falls back to them where the Portal's current children no longer hold
-        // the child: drop the second descent at the detached edge and the child reads the context's default.
         [Test]
-        public void Given_APortalChildWhosePresenceChildIsExiting_When_ItReRendersAlone_Then_ItStillReadsTheProviderInsideThePortal()
+        public void Given_APortalChildWhosePresenceChildIsExiting_When_ItReRendersAlone_Then_ItReadsTheProviderInsideThePortalAsItIsNow()
         {
-            // Arrange — the exit holds the child until the panel ticks, which nothing here does.
+            // Arrange — the Provider inside the Portal changes value while the child is present, so the Portal's
+            // children when the child was created hold the first one.
             using var mounted = V.Mount(Root, V.Component(ExitingPortalChildHostRender, key: "host"));
+            s_setInside.Invoke("inside-second");
+            mounted.FlushStateForTest();
             s_setPresent.Invoke(false);
             mounted.FlushStateForTest();
             s_reading = null;
@@ -1112,18 +1274,17 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert — null where the child did not render.
-            Assert.That(s_reading, Is.EqualTo("inside"));
+            Assert.That(s_reading, Is.EqualTo("inside-second"));
         }
 
-        // GREEN_ON_BASE(characterization): the base pushes the child's whole snapshot over whatever the spine found.
-        // What this pins is that the snapshot still answers where an edge above finds no node for its child, which
-        // the exiting presence child holding the Portal's declarer is: push no stamp snapshot under the spine and the
-        // child reads the context's default.
         [Test]
-        public void Given_APortalDeclaredInsideAnExitingPresenceChild_When_ThePortalsChildReRendersAlone_Then_ItStillReadsTheProviderAboveThePresence()
+        public void Given_APortalDeclaredInsideAnExitingPresenceChild_When_ThePortalsChildReRendersAlone_Then_ItReadsTheProviderAboveThePresenceAsItIsNow()
         {
-            // Arrange
+            // Arrange — the Provider above the presence changes value while the child is present, after the Portal's
+            // child was created under the first one.
             using var mounted = V.Mount(Root, V.Component(PresenceOverPortalDeclarerRender, key: "outer"));
+            s_setOuter.Invoke("outer-second");
+            mounted.FlushStateForTest();
             s_setPresent.Invoke(false);
             mounted.FlushStateForTest();
             s_reading = null;
@@ -1132,19 +1293,18 @@ namespace Velvet.Tests
             s_setReader.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(s_reading, Is.EqualTo("outer"));
+            // Assert — null where the child did not render.
+            Assert.That(s_reading, Is.EqualTo("outer-second"));
         }
 
-        // GREEN_ON_BASE(characterization): the base mounts a scroll's rows over the whole snapshot of the list.
-        // What this pins is that the snapshot still answers where the spine to the list's host finds no node for it,
-        // which the exiting presence child holding the host is: push no snapshot of the capture under the range's
-        // spine and the row reads the context's default.
         [Test]
-        public void Given_AListWhoseHostIsInAnExitingPresenceChild_When_AScrollMountsARow_Then_TheRowReadsTheProviderAboveThePresence()
+        public void Given_AListWhoseHostIsInAnExitingPresenceChild_When_AScrollMountsARow_Then_TheRowReadsTheProviderAboveThePresenceAsItIsNow()
         {
-            // Arrange
+            // Arrange — the Provider above the presence changes value while the child is present; the host bails on
+            // its props, so the list's capture keeps the first value.
             using var mounted = V.Mount(Root, V.Component(PresenceOverListHostRender, key: "outer"));
+            s_setOuter.Invoke("outer-second");
+            mounted.FlushStateForTest();
             s_setPresent.Invoke(false);
             mounted.FlushStateForTest();
 
@@ -1153,15 +1313,17 @@ namespace Velvet.Tests
                 .UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
 
             // Assert — null where no row rendered.
-            Assert.That(s_reading, Is.EqualTo("outer"));
+            Assert.That(s_reading, Is.EqualTo("outer-second"));
         }
 
         // The exit holds the presence child until the panel ticks, which nothing here does.
         private static VNode UseLeavingAround(VNode child)
         {
             var (present, setPresent) = Hooks.UseState(true);
+            var (outer, setOuter) = Hooks.UseState("outer");
             s_setPresent = setPresent;
-            return V.Provider(s_theme, "outer", new VNode[]
+            s_setOuter = setOuter;
+            return V.Provider(s_theme, outer, new VNode[]
             {
                 V.AnimatePresence(key: "presence", children: new VNode[]
                 {
@@ -1194,14 +1356,16 @@ namespace Velvet.Tests
         private static VNode UseLeavingUnderInner(VNode child)
         {
             var (present, setPresent) = Hooks.UseState(true);
+            var (inner, setInner) = Hooks.UseState("inner");
             s_setPresent = setPresent;
+            s_setInner = setInner;
             return V.AnimatePresence(key: "presence", children: new VNode[]
             {
                 present
                     ? V.Motion(key: "dlg", name: "dlg", variants: s_fade, initial: "hidden", animate: "visible",
                         exit: "hidden", transition: s_child, children: new VNode[]
                         {
-                            V.Provider(s_theme, "inner", new[] { child }),
+                            V.Provider(s_theme, inner, new[] { child }),
                         })
                     : null,
             });
@@ -1276,11 +1440,13 @@ namespace Velvet.Tests
             s_presencesFiber = FiberAmbientStack.Current;
             var (present, setPresent) = Hooks.UseState(true);
             var (flipped, setFlipped) = Hooks.UseState(false);
+            var (inner, setInner) = Hooks.UseState("inner");
             s_setPresent = setPresent;
             s_setFlipped = setFlipped;
+            s_setInner = setInner;
             return V.Div(name: flipped ? "flipped" : "initial", children: new VNode[]
             {
-                LeavingAround("first", present, V.Provider(s_theme, "inner", new[] { host })),
+                LeavingAround("first", present, V.Provider(s_theme, inner, new[] { host })),
                 LeavingAround("second", present, V.Label(text: "second")),
                 V.Div(key: "boundary", children: new VNode[] { V.Component(RefDroppingBoundary, flipped, key: "b") }),
             });
@@ -1332,7 +1498,11 @@ namespace Velvet.Tests
             => V.Portal(s_portalTarget, new VNode[] { V.Component(ReaderRender, key: "reader") });
 
         [Component(Compiler = false)]
-        private static VNode PresenceOverListHostRender() => UseLeavingAround(V.Component(ListHostRender, key: "host"));
+        private static VNode PresenceOverListHostRender()
+            => UseLeavingAround(V.Component(BailingListHostRender, key: "host"));
+
+        [Component(Compiler = false, Memoize = true)]
+        private static VNode BailingListHostRender() => ReaderRows();
 
         [Component(Compiler = false)]
         private static VNode ListHostRender() => ReaderRows();
@@ -1358,10 +1528,12 @@ namespace Velvet.Tests
         private static VNode ExitingPortalChildHostRender()
         {
             var (present, setPresent) = Hooks.UseState(true);
+            var (inside, setInside) = Hooks.UseState("inside");
             s_setPresent = setPresent;
+            s_setInside = setInside;
             return V.Portal(s_portalTarget, new VNode[]
             {
-                V.Provider(s_theme, "inside", new VNode[]
+                V.Provider(s_theme, inside, new VNode[]
                 {
                     V.AnimatePresence(key: "presence", children: new VNode[]
                     {

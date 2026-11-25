@@ -3084,9 +3084,35 @@ namespace Velvet
             // Keyed children currently in the DOM (in DOM order), including exiting ghosts.
             public readonly List<(string key, VNode node)> Committed = new();
 
-            // The node whose expansion last wrote Committed, which is how FiberContextSpine tells this presence from
-            // another at the same SlotPath of one boundary.
-            public AnimatePresenceNode? Node;
+            // The node whose expansion last wrote Committed; null once the state is retired. Each node an expansion
+            // writes here names its state for FiberContextSpine (Of), which a node one expansion writes at two
+            // presences names neither of.
+            public AnimatePresenceNode? Node
+            {
+                get => _node;
+                set
+                {
+                    _node = value;
+                    if (value == null) return;
+                    if (!s_ofNode.TryGetValue(value, out var named)) s_ofNode.Add(value, this);
+                    else if (!ReferenceEquals(named, this) && !ReferenceEquals(named, s_placedTwice))
+                    {
+                        s_ofNode.Remove(value);
+                        s_ofNode.Add(value, named._node == null ? this : s_placedTwice);
+                    }
+                }
+            }
+
+            private AnimatePresenceNode? _node;
+
+            private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<AnimatePresenceNode,
+                PresenceBoundaryState> s_ofNode = new();
+
+            private static readonly PresenceBoundaryState s_placedTwice = new();
+
+            // The state not retired whose expansion wrote node, where only one did.
+            internal static PresenceBoundaryState? Of(AnimatePresenceNode node)
+                => s_ofNode.TryGetValue(node, out var state) && state._node != null ? state : null;
 
             // Keys present at the first render under initial: false and not removed since (see LiveEntrySite).
             public readonly HashSet<string> InitialBlocked = new();

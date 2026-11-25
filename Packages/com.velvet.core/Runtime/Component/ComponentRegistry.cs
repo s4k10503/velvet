@@ -44,6 +44,10 @@ namespace Velvet
         // without scanning _inlineInstances (and without the re-entrant dictionary-mutation hazard when
         // FiberRenderer.Dispose recursively triggers disposal during descendant cleanup).
         private readonly Dictionary<ComponentFiber, HashSet<ComponentFiber>> _parentToInlineFibers = new();
+        // How many inline fibers a parent holds at one Portal scope, position key and identity, whichever container
+        // each reconciles into: FiberContextSpine finds a spine child by that key and tells them apart only by node.
+        private readonly Dictionary<(ComponentFiber parentFiber, VisualElement? portalScope, object? positionKey, object identity), int>
+            _inlineKeyCounts = new();
         // Inline fibers by the container their rows share, whatever fiber or Portal placed them there:
         // FiberCommitWork moves the starts of the ones a row-count change lands ahead of.
         private readonly Dictionary<VisualElement, InlineTenancy> _tenancies = new();
@@ -394,6 +398,8 @@ namespace Velvet
                 // _parentToInlineFibers is keyed by a non-null parent fiber for cascade disposal only.
                 if (parentFiber != null)
                 {
+                    var counted = (parentFiber, site.PortalScope, site.PositionKey, identity);
+                    _inlineKeyCounts[counted] = _inlineKeyCounts.TryGetValue(counted, out var count) ? count + 1 : 1;
                     if (!_parentToInlineFibers.TryGetValue(parentFiber, out var siblings))
                     {
                         siblings = new HashSet<ComponentFiber>();
@@ -474,6 +480,12 @@ namespace Velvet
                     tenancy.Fibers.Remove(fiber);
                     if (tenancy.Fibers.Count == 0) _tenancies.Remove(key.container);
                 }
+                if (key.parentFiber != null)
+                {
+                    var counted = (key.parentFiber, key.portalScope, key.positionKey, key.identity);
+                    if (_inlineKeyCounts.TryGetValue(counted, out var count) && count > 1) _inlineKeyCounts[counted] = count - 1;
+                    else _inlineKeyCounts.Remove(counted);
+                }
                 if (key.parentFiber != null && _parentToInlineFibers.TryGetValue(key.parentFiber, out var siblings))
                 {
                     siblings.Remove(fiber);
@@ -538,6 +550,29 @@ namespace Velvet
             VisualElement? container)
         {
             return LookupInline(parentFiber, portalScope, container, positionKey, identity);
+        }
+
+        // Whether another inline child of fiber's parent is registered at fiber's Portal scope, position key and
+        // identity in another container, and, where node is given, with node as the node it was last reached by.
+        internal bool SharesInlineKeyElsewhere(ComponentFiber fiber, VNode? node)
+        {
+            if (!_inlineFiberToKey.TryGetValue(fiber, out var key) || key.parentFiber == null) return false;
+            if (!_inlineKeyCounts.TryGetValue((key.parentFiber, key.portalScope, key.positionKey, key.identity), out var count)
+                || count < 2 || !_parentToInlineFibers.TryGetValue(key.parentFiber, out var siblings))
+            {
+                return false;
+            }
+            foreach (var sibling in siblings)
+            {
+                if (ReferenceEquals(sibling, fiber) || !_inlineFiberToKey.TryGetValue(sibling, out var other)) continue;
+                if (ReferenceEquals(other.container, key.container) || !ReferenceEquals(other.portalScope, key.portalScope)
+                    || !Equals(other.positionKey, key.positionKey) || !Equals(other.identity, key.identity))
+                {
+                    continue;
+                }
+                if (node == null || ReferenceEquals(sibling.SourceNode, node)) return true;
+            }
+            return false;
         }
 
         // Returns the inline registration key under which fiber is registered, or false when it is not
@@ -885,6 +920,7 @@ namespace Velvet
             _inlineFibersOfPortal.Clear();
             _portalIndexNodes.Clear();
             _parentToInlineFibers.Clear();
+            _inlineKeyCounts.Clear();
             _tenancies.Clear();
             _wrapperIndex.Clear();
             _wrapperFiberInfo.Clear();

@@ -75,7 +75,19 @@ namespace Velvet
             // One instance shared by every Push, cleared at each edge. An element's children are reconciled by a
             // new walk, so PushScope starts their occurrence count over where that walk's claim does.
             internal InlineKeyClaims Claims { get; init; }
+            // Whether Push puts the stamp on where the edge cannot place SpineChild, which lets MatchesInlineSpineChild
+            // decline an occurrence it cannot tell from another.
+            internal bool CanFallBack { get; init; }
+            internal EdgeMatch Match { get; init; }
         }
+
+        // Set by MatchesInlineSpineChild where the occurrence it stopped at is one node placed at two of them.
+        private sealed class EdgeMatch
+        {
+            internal bool Ambiguous;
+        }
+
+        private static readonly EdgeMatch s_match = new();
 
         // Occurrence of an explicit component key while one spine edge is walked.
         private sealed class InlineKeyClaims
@@ -156,6 +168,7 @@ namespace Velvet
             for (var i = 0; i < spine.Count; i++)
             {
                 claims.Clear();
+                s_match.Ambiguous = false;
                 var ancestor = spine[i];
                 var child = i + 1 < spine.Count ? spine[i + 1] : target;
                 // An edge that finds no node for a child the registry places rebuilds nothing between ancestor and
@@ -187,12 +200,13 @@ namespace Velvet
                         Container = detachedContainer,
                         OwnOutput = null,
                         Claims = claims,
+                        CanFallBack = placed && stampHoldsThisEdge,
+                        Match = s_match,
                     };
-                    if (!PushDetachedEdge(detached, in detachedWalk, rawPushedKeys ??= new List<object>())
-                        && placed && stampHoldsThisEdge)
-                    {
-                        PushStamp(stack, stamp!, ref rawPushedKeys);
-                    }
+                    var detachedMark = pushed.Count;
+                    FallBackUnlessPlaced(
+                        PushDetachedEdge(detached, in detachedWalk, rawPushedKeys ??= new List<object>()),
+                        in detachedWalk, detachedMark, stamp, ref rawPushedKeys);
                     continue;
                 }
 
@@ -216,12 +230,13 @@ namespace Velvet
                     Container = childContainer,
                     OwnOutput = tree,
                     Claims = claims,
+                    CanFallBack = stampHoldsThisEdge,
+                    Match = s_match,
                 };
-                if ((tree is not { Length: > 0 } || !PushEnclosingProviders(tree, FiberKeying.WalkRoot, in walk))
-                    && stampHoldsThisEdge)
-                {
-                    PushStamp(stack, stamp!, ref rawPushedKeys);
-                }
+                var mark = pushed.Count;
+                FallBackUnlessPlaced(
+                    tree is { Length: > 0 } && PushEnclosingProviders(tree, FiberKeying.WalkRoot, in walk),
+                    in walk, mark, stamp, ref rawPushedKeys);
             }
 
             bufferPool.ReturnFiberList(spine);
@@ -230,6 +245,17 @@ namespace Velvet
         }
 
         private static readonly InlineKeyClaims s_claims = new();
+
+        // An edge that stopped at an occurrence it cannot tell from another takes what it pushed from mark on back off,
+        // and reads as one that found nothing.
+        private static void FallBackUnlessPlaced(
+            bool found, in SpineWalk walk, int mark, DetachedMountContext? stamp, ref List<object>? rawPushedKeys)
+        {
+            if (found && !walk.Match.Ambiguous) return;
+            for (var i = walk.Pushed.Count - 1; i >= mark; i--) walk.Pushed[i].PopContext(walk.Stack);
+            walk.Pushed.RemoveRange(mark, walk.Pushed.Count - mark);
+            if (walk.CanFallBack) PushStamp(walk.Stack, stamp!, ref rawPushedKeys);
+        }
 
         // The stamp taken last on the way down to target, and how many edges above target its fiber sits.
         private static DetachedMountContext? NearestStamp(ComponentFiber target, out int depth)
@@ -486,7 +512,15 @@ namespace Velvet
                 registry.InlineExplicitPositionKeyBoxes);
             var resolved = registry.TryGetFiberForInlineKey(
                 walk.Ancestor, slotKey, identity, walk.PortalScope, walk.Container);
-            return ReferenceEquals(resolved, walk.SpineChild);
+            if (!ReferenceEquals(resolved, walk.SpineChild)) return false;
+            if (!walk.CanFallBack) return true;
+            // The key is looked up in the child's own container, so where another child of Ancestor holds it in another
+            // container the key places the child only at the child's own node, and nowhere where that node stands in
+            // both.
+            var own = ReferenceEquals(component, walk.SpineChild.SourceNode);
+            if (!registry.SharesInlineKeyElsewhere(walk.SpineChild, own ? component : null)) return true;
+            if (own) walk.Match.Ambiguous = true;
+            return own;
         }
 
         private static bool PushMemoInner(
@@ -619,7 +653,7 @@ namespace Velvet
 
             // A child that is exiting is not among the children the presence is given: the expansion emits it from
             // the presence's state, under the key it holds there.
-            if (StateOf(presence, presencePosition.SlotPath, in walk) is not { } state) return false;
+            if (ReconcilerContext.PresenceBoundaryState.Of(presence) is not { } state) return false;
             foreach (var (key, node) in state.Committed)
             {
                 if (!state.IsLeaving(key)) continue;
@@ -629,26 +663,6 @@ namespace Velvet
                 }
             }
             return false;
-        }
-
-        // The expansion keys a presence's state by its boundary, the element it reconciles into and its SlotPath; the
-        // walk knows no element, so the state is the one at the boundary and SlotPath whose last expansion was of this
-        // node, or the only one there. One node instance placed at two such presences is ambiguous between them.
-        private static ReconcilerContext.PresenceBoundaryState? StateOf(
-            AnimatePresenceNode presence, long slotPath, in SpineWalk walk)
-        {
-            var states = walk.Ancestor.Reconciler?.Context.PresenceStates;
-            if (states == null) return null;
-            ReconcilerContext.PresenceBoundaryState? only = null;
-            var atThisSlot = 0;
-            foreach (var entry in states)
-            {
-                if (!ReferenceEquals(entry.Key.boundary, walk.Ancestor) || entry.Key.presenceKey != slotPath) continue;
-                if (ReferenceEquals(entry.Value.Node, presence)) return entry.Value;
-                only = entry.Value;
-                atThisSlot++;
-            }
-            return atThisSlot == 1 ? only : null;
         }
 
         // Element children, and a Provider reconciled as an element, open a walk of their own.
