@@ -841,7 +841,7 @@ namespace Velvet
             if (stillPlaced)
             {
                 _ctx.PendingZLayerDeadReals.Add(
-                    (real, poolable, ChildListWrites.RunRootOf(_ctx.Pass), _ctx.Pass.RemovalOwner));
+                    (real, poolable, ChildListWrites.RunRootOf(_ctx.Pass), ChildListWrites.RemovalOwner));
                 return;
             }
             ReturnOccupantToPool(real, poolable);

@@ -17,7 +17,7 @@ namespace Velvet
         private VisualElement? _container;
         private int _slotStart;
         private OldSlotOccupants? _occupants;
-        // Each with the component whose output held it (ReconcilePass.RemovalOwner).
+        // Each with the component whose output held it (ChildListWrites.RemovalOwner).
         private readonly List<(int Index, VisualElement Row, ComponentFiber? Owner)> _removedRows = new();
         // The old leaves an orphan's output starts at, each with the element the walk takes the orphan down at.
         private readonly List<(int Index, VisualElement Start)> _orphanRows = new();
@@ -140,11 +140,13 @@ namespace Velvet
         }
 
         // The owner of the removed row element sits in, or of the Portal row it sits in, where DetachPortals has met that
-        // Portal; null where neither is met.
+        // Portal; null where neither is met. A relocated element stands beside its placeholder rather than under it, and
+        // the placeholder is the row, so the walk goes on from there.
         private ComponentFiber? OwnerOfTheRemovedRowHolding(VisualElement element)
         {
             for (VisualElement? ve = element; ve != null; ve = ChildListWrites.ParentOf(ve))
             {
+                ve = FiberZLayerCoordinator.PlaceholderOf(Ctx, ve) ?? ve;
                 foreach (var (_, row, owner) in _removedRows)
                 {
                     if (ReferenceEquals(row, ve)) return owner;
@@ -222,9 +224,10 @@ namespace Velvet
                 {
                     try
                     {
-                        // What a relocated element this cleanup retires throws as it leaves after the pass is filed under
-                        // this owner (FiberElementCleaner.ReleaseRetiredZLayerReals).
-                        using var removing = new ChildListWrites.RemovalOwnerScope(ctx.Pass, owner);
+                        // The owner of what this cleanup removes: the removals it records, as a V.VirtualList inside the
+                        // row clears its rows, and a relocated element it retires, which leaves after the pass
+                        // (FiberElementCleaner.ReleaseRetiredZLayerReals).
+                        using var removing = new ChildListWrites.RemovalOwnerScope(owner);
                         _cleaner.CleanupRemovedRow(element, poolable, discardedRoot, _deletion);
                     }
                     catch (System.Exception exception)

@@ -690,7 +690,7 @@ namespace Velvet
             pass.Ops.Add(new ReconcilePass.Op
             {
                 Container = container, Caller = caller, Child = element!, Index = index, Kind = ReconcilePass.OpKind.RemoveAt,
-                Fiber = pass.RemovalOwner,
+                Fiber = s_removalOwner,
             });
             Touch(container);
         }
@@ -723,7 +723,7 @@ namespace Velvet
             pass.Ops.Add(new ReconcilePass.Op
             {
                 Container = container, Child = child, Kind = ReconcilePass.OpKind.RemoveChild,
-                Fiber = pass.RemovalOwner,
+                Fiber = s_removalOwner,
             });
         }
 
@@ -844,7 +844,7 @@ namespace Velvet
             first?.Throw();
         }
 
-        // Files the failure of a removal under the component whose output held the row (FileUnderTheOwner), that of an
+        // Files the failure of a removal recorded with an owner under it (FileUnderTheOwner), that of an
         // insert of an element a wave created under the component that rendered it, for the wave
         // to route (ReconcilePass.Failures), its search starting where React's commit starts a placement's
         // (ComponentBoundarySearch.PlacementSearchStart), at the place the element's walk ended at, and that of any other
@@ -881,7 +881,7 @@ namespace Velvet
             return true;
         }
 
-        // What removing a row of owner's output threw (ReconcilePass.RemovalOwner), captured from owner, as React captures
+        // What removing a row of owner's output threw (RemovalOwner), captured from owner, as React captures
         // what a deletion throws from the nearest mounted ancestor of the deleted child (ComponentBoundarySearch.CaptureAt).
         // Captured at once rather than filed for a wave to route (ReconcilePass.Failures), which nothing does outside a
         // wave.
@@ -892,30 +892,38 @@ namespace Velvet
         }
 
         // What a removal made at once threw, filed as the current pass files a failed op (FileFailure), with the
-        // element noted as one whose removal threw. False where nothing takes it, which leaves the caller to rethrow.
+        // element noted as one whose removal threw. Filed under the removal's owner whether or not a pass is open, so a
+        // V.VirtualList range rendered outside one files it too. False where nothing takes it, which leaves the caller
+        // to rethrow.
         private static bool FileRemovalFailure(VisualElement element, Exception exception)
         {
             NoteRemovalThrew(element);
+            if (s_removalOwner is { } owner) return FileUnderTheOwner(owner, exception);
             var pass = s_current;
-            if (pass?.RemovalOwner is { } owner) return FileUnderTheOwner(owner, exception);
             return pass != null && FileUnderTheRun(pass, RunRootOf(pass), null, exception);
         }
 
-        // Names the component whose output holds the rows removed while it is open (ReconcilePass.RemovalOwner), and puts
-        // back the one an enclosing removal named as it closes.
+        // The component whose output holds the rows a removal takes, while the removal is made or recorded and while the
+        // deletion that decided it cleans them up (RemovalOwnerScope): what the removal throws is captured from it
+        // (FileUnderTheOwner). Null where no reconcile names one, which leaves the failure to FileUnderTheRun. Held
+        // here rather than on a pass, which a removal outside every pass has none of.
+        private static ComponentFiber? s_removalOwner;
+
+        internal static ComponentFiber? RemovalOwner => s_removalOwner;
+
+        // Names the component whose output holds the rows removed while it is open (RemovalOwner), and puts back the one
+        // an enclosing removal named as it closes.
         internal readonly struct RemovalOwnerScope : IDisposable
         {
-            private readonly ReconcilePass _pass;
             private readonly ComponentFiber? _enclosing;
 
-            internal RemovalOwnerScope(ReconcilePass pass, ComponentFiber? owner)
+            internal RemovalOwnerScope(ComponentFiber? owner)
             {
-                _pass = pass;
-                _enclosing = pass.RemovalOwner;
-                pass.RemovalOwner = owner;
+                _enclosing = s_removalOwner;
+                s_removalOwner = owner;
             }
 
-            public void Dispose() => _pass.RemovalOwner = _enclosing;
+            public void Dispose() => s_removalOwner = _enclosing;
         }
 
         // The elements a removal of which threw, which FiberElementCleaner's pool returns and z-* release read, until

@@ -13,6 +13,10 @@ namespace Velvet
         void CleanupElementForController(VisualElement row);
         VisualElement SlotOccupantForController(VisualElement row);
 
+        // Takes what holds a row's slot out of the list's container, naming as the removal's owner the row's component
+        // where the row is one and host otherwise, the component that rendered the list (ChildListWrites.RemovalOwner).
+        void RemoveRowForController(VisualElement container, VisualElement slotRow, ComponentFiber? host);
+
         // A row the item loop creates or patches attaches its refs and commits its layout work once the controller
         // has placed it in the list, rather than where the row was created, for the reason
         // Reconciler.FinishTopLevelPass gives — and this is the seam that reaches it, because the item loop also

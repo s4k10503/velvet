@@ -641,7 +641,7 @@ namespace Velvet
             {
                 if (_slotRows[i] is { } row)
                 {
-                    ChildListWrites.Remove(_visibleContainer, row);
+                    _reconciler.RemoveRowForController(_visibleContainer, row, _hostFiber);
                 }
             }
             _slotRows.Clear();

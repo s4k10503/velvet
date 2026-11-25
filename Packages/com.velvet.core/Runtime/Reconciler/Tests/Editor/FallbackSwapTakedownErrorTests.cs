@@ -1,6 +1,8 @@
 using System;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -16,10 +18,13 @@ namespace Velvet.Tests
     /// caught, one a child's own render threw, one its parent's walk caught, an error a commit captured for the boundary,
     /// that capture taken in its parent's walk, and a <c>UseFrame</c> callback's error, and where, with no boundary above,
     /// the root renders nothing for a child's render error and reports both as uncaught; the <c>z-*</c> and ref cleanup
-    /// cases follow the boundary's own render, and the <c>V.WorldSpace</c> case its parent's walk. A boundary between the component whose
-    /// update removed the element and the one that rendered it takes the error, from the flat path and the general walk
-    /// alike, and so does a boundary taking down its own fallback. A removal a later drain makes under another boundary
-    /// still goes to that one.
+    /// cases follow the boundary's own render, and the <c>V.WorldSpace</c> cases, one inside a <c>z-*</c> element, its
+    /// parent's walk. A boundary the swap takes down with the element is passed over. Where a <c>UseFrame</c> swap's
+    /// fallback throws, the boundary above that replaces the swapping one takes what the takedown threw. A boundary
+    /// between the component whose update removed the element and the one that rendered it takes the error, from the
+    /// flat path and the general walk alike, and so does a boundary taking down its own fallback, and one above the
+    /// component rendering a <c>V.VirtualList</c> whose row an update drops or a scroll takes out. A removal a later drain
+    /// makes under another boundary still goes to that one.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs a detach callback.
@@ -344,7 +349,7 @@ namespace Velvet.Tests
             => V.Fragment(V.Component(CatchesOverAQuietRow, key: "b"), V.Component(HoldsARemover, key: "c"));
 
         // GREEN_ON_BASE(characterization): the base names no removal owner for a later removal to read.
-        // Leaving ReconcilePass.RemovalOwner set where ChildListWrites.RemovalOwnerScope closes hands the later removal's
+        // Leaving ChildListWrites.RemovalOwner set where ChildListWrites.RemovalOwnerScope closes hands the later removal's
         // error to the boundary that swapped, and reddens it.
         [Test]
         public void Given_ABoundaryThatHasSwappedItsFallbackIn_When_ALaterDrainRemovesAnElementThatThrowsAsItDetachesUnderAnotherBoundary_Then_TheOtherBoundaryReportsIt()
@@ -581,6 +586,232 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("caught:B:render:Child caught:B:detach:X"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode CatchesOverAStackedElementHoldingAWorldSpaceFor(bool throws)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(
+                V.Div(className: "absolute z-10", key: "stacked", children: new VNode[]
+                {
+                    V.WorldSpace(Vector3.zero, key: "ws",
+                        children: new VNode[] { V.Custom<DetachThrower>(name: "X", key: "x") }),
+                }),
+                V.Component(ThrowsInRenderWhen, throws, key: "child"));
+        }
+
+        [Component]
+        private static VNode RendersTheStackedWorldSpaceBoundaryInItsWalk()
+        {
+            var (throws, _) = EventLog.UseState("Throws", false);
+            return V.Component(CatchesOverAStackedElementHoldingAWorldSpaceFor, throws, key: "b");
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseParentsWalkCatchesAChildsRenderError_When_ItsSwapRemovesAZPlacedElementHoldingAWorldSpaceWhoseElementThrowsAsItDetaches_Then_TheBoundaryReportsBothErrors()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(RendersTheStackedWorldSpaceBoundaryInItsWalk, key: "parent"));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Throws").Invoke(true);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:B:render:Child caught:B:detach:X"));
+        }
+
+        // A boundary among the children the swap takes down, which goes with them.
+        [Component(IsErrorBoundary = true, DisplayName = "D")]
+        private static VNode HoldsADetachThrowerOfItsOwn()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-d"));
+            return V.Custom<DetachThrower>(name: "T", key: "thrower");
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode CatchesOverABoundaryHoldingADetachThrower()
+        {
+            var (throws, _) = EventLog.UseState("Throws", false);
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(
+                V.Component(HoldsADetachThrowerOfItsOwn, key: "d"),
+                V.Component(ThrowsInRenderWhen, throws, key: "child"));
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseSwapTakesDownABoundaryWhoseElementThrowsAsItDetaches_When_ItsOwnRenderCatchesAChildsRenderError_Then_TheSwappingBoundaryReportsBothErrors()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(CatchesOverABoundaryHoldingADetachThrower, key: "b"));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Throws").Invoke(true);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:B:render:Child caught:B:detach:T"));
+        }
+
+        [Component]
+        private static VNode ThrowsAsTheFallback() => throw new InvalidOperationException("render:Fallback");
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode FallsBackToAThrowerOverAFrameThrower()
+        {
+            Hooks.UseFallback(_ => V.Component(ThrowsAsTheFallback, key: "fallback"));
+            return V.Fragment(
+                V.Custom<DetachThrower>(name: "T", key: "thrower"),
+                V.Component(ThrowsOnAFrame, key: "child"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "A")]
+        private static VNode CatchesForABoundaryWhoseFallbackThrows()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-a"));
+            return V.Component(FallsBackToAThrowerOverAFrameThrower, key: "b");
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseFallbackThrowsBelowAnotherBoundary_When_ItsSwapForAFrameCallbacksErrorRemovesAnElementThatThrowsAsItDetaches_Then_TheBoundaryAboveReportsBothErrors()
+        {
+            // Arrange — the frame callback takes its baseline on the panel's first pass, which throws nothing
+            var log = new EventLog();
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
+            using var mounted = Mount(log, V.Component(CatchesForABoundaryWhoseFallbackThrows, key: "a"));
+            mounted.FlushEffectsForTest();
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            log.Clear();
+
+            // Act
+            UseFrameFakeClockHost.Ms += 16;
+            RecordingWhatItThrows(() => EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel), log.Add);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:A:render:Fallback caught:A:detach:T"));
+        }
+
+        private sealed class ConstructionRefusingElement : VisualElement
+        {
+            public ConstructionRefusingElement() => throw new InvalidOperationException("thrown by the constructor");
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode FallsBackToARefusedElementOverAFrameThrower()
+        {
+            Hooks.UseFallback(_ => V.Custom<ConstructionRefusingElement>());
+            return V.Fragment(
+                V.Custom<DetachThrower>(name: "T", key: "thrower"),
+                V.Component(ThrowsOnAFrame, key: "child"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "A")]
+        private static VNode CatchesForABoundaryWhoseFallbackCannotBeCreated()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-a"));
+            return V.Component(FallsBackToARefusedElementOverAFrameThrower, key: "b");
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseFallbackCannotBeCreatedBelowAnotherBoundary_When_ItsSwapForAFrameCallbacksErrorRemovesAnElementThatThrowsAsItDetaches_Then_TheBoundaryAboveReportsBothErrors()
+        {
+            // Arrange — the frame callback takes its baseline on the panel's first pass, which throws nothing
+            var log = new EventLog();
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
+            using var mounted = Mount(log, V.Component(CatchesForABoundaryWhoseFallbackCannotBeCreated, key: "a"));
+            mounted.FlushEffectsForTest();
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            log.Clear();
+            LogAssert.Expect(LogType.Error, new Regex("reconciling the fallback UI threw"));
+            LogAssert.Expect(LogType.Error, new Regex(@"\[ErrorBoundary\] An exception occurred"));
+            LogAssert.Expect(LogType.Exception, new Regex("thrown by the constructor"));
+
+            // Act
+            UseFrameFakeClockHost.Ms += 16;
+            RecordingWhatItThrows(() => EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel), log.Add);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:A:thrown by the constructor caught:A:detach:T"));
+        }
+
+        private sealed record Items(string[] Names);
+
+        private static VNode ARowFor(string item)
+            => item == "R1" ? V.Custom<DetachThrower>(name: item, key: item) : V.Div(name: item, key: item);
+
+        [Component]
+        private static VNode RendersAListOf(Items props)
+            => V.VirtualList(items: props.Names, keySelector: item => item, itemHeight: 50f, renderer: ARowFor, overscan: 0);
+
+        [Component(IsErrorBoundary = true, DisplayName = "C")]
+        private static VNode HoldsAListRendererOf(Items props)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-c"));
+            return V.Component(RendersAListOf, props, key: "list");
+        }
+
+        [Component]
+        private static VNode HandsTheListItsItems()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Component(HoldsAListRendererOf, new Items(shown ? new[] { "R1", "R2" } : new[] { "R2" }), key: "c");
+        }
+
+        // EditMode runs no layout, so the list is given the range its scroll would give it, rows of it tall.
+        private void ShowTheListsRows(MountedTree mounted, float scrollY, int rows)
+            => mounted.Root.Reconciler!.Context.VirtualListControllers[_mountPoint.Q<ScrollView>()]
+                .UpdateVisibleRange(scrollY: scrollY, viewportHeight: 50f * rows);
+
+        [Test]
+        public void Given_ABoundaryBetweenTheUpdatedComponentAndTheComponentRenderingAList_When_TheUpdateDropsARowThatThrowsAsItDetaches_Then_TheBoundaryReportsIt()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(HandsTheListItsItems, key: "parent"));
+            ShowTheListsRows(mounted, scrollY: 0f, rows: 2);
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:C:detach:R1"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "C")]
+        private static VNode HoldsAListRendererOfThreeRows()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-c"));
+            return V.Component(RendersAListOf, new Items(new[] { "R1", "R2", "R3" }), key: "list");
+        }
+
+        [Test]
+        public void Given_ABoundaryAboveTheComponentRenderingAList_When_AScrollTakesOutARowThatThrowsAsItDetaches_Then_TheBoundaryReportsIt()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(HoldsAListRendererOfThreeRows, key: "c"));
+            ShowTheListsRows(mounted, scrollY: 0f, rows: 1);
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            RecordingWhatItThrows(() => ShowTheListsRows(mounted, scrollY: 50f, rows: 1), log.Add);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:C:detach:R1"));
         }
     }
 }

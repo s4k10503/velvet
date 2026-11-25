@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using UnityEngine;
 
@@ -278,6 +279,7 @@ namespace Velvet
             // Taken before the fallback is shown, which detaches what the failed output created, so that the
             // completions the fallback's own render queues stay out of it as well.
             var failedCompletions = ctx.CompletionsBelow(fiber);
+            var capturedFrom = ctx.NextCaptureSequence;
             var pushedOnto = FiberRenderer.PushFiber(fiber);
             fiber.IsShowingFallback = true;
             fiber.FallbackContentFailed = false;
@@ -326,8 +328,16 @@ namespace Velvet
             }
             DropTheSwapsErrors(fiber);
             var failure = TakeFallbackReconcileFailure(fiber);
-            if (failure == null) return false;
+            // Taken off the boundary ahead of the propagation below, whose replacement of it drops what it holds
+            // (CommitErrors.DropUnmounted).
+            var captured = TakeTheSwapsCaptures(ctx, fiber, capturedFrom);
+            if (failure == null)
+            {
+                CaptureAgain(fiber, captured);
+                return false;
+            }
             ComponentBoundarySearch.PropagateException(fiber, throwingFiber, failure, isRenderError);
+            CaptureAgain(fiber, captured);
             // MUTANT_SURVIVES(unreachable, literal): this boundary is disposed by the time PropagateException returns here.
             // A boundary above that takes the failure without throwing has taken down its rows, this one among them, to
             // show its fallback, so PropagateFrom returns at its IsDisposed check whatever this returns. Two catches hold
@@ -335,6 +345,33 @@ namespace Velvet
             // errors only from fibers its disposal has marked deleted, and a boundary in its own swap only from the rows
             // it is deleting, since the refs and effects of the content it mounts wait until the swap is over.
             return true;
+        }
+
+        // A swap no wave owns applies its takedown before the fallback renders, so what the takedown throws is captured on
+        // the boundary at once (CaptureAgain owns why it is taken back where the swap fails).
+        private static List<Exception>? TakeTheSwapsCaptures(ReconcilerContext ctx, ComponentFiber boundary, long capturedFrom)
+        {
+            var captures = boundary.PendingCaptures;
+            if (captures == null) return null;
+            List<Exception>? taken = null;
+            for (var i = captures.Count - 1; i >= 0; i--)
+            {
+                if (captures[i].Sequence < capturedFrom) continue;
+                (taken ??= new List<Exception>()).Insert(0, captures[i].Error);
+                captures.RemoveAt(i);
+            }
+            if (captures.Count == 0) ctx.DropCapturesOf(boundary);
+            return taken;
+        }
+
+        // Where a swap failed, React never commits it: the commit that deletes these rows is that of whichever boundary
+        // replaces this one, and it captures what they throw from their nearest mounted ancestor. So what the swap
+        // captured is captured again from the boundary, which the search passes over where it was replaced, and which
+        // takes it again where it stands.
+        private static void CaptureAgain(ComponentFiber boundary, List<Exception>? captured)
+        {
+            if (captured == null) return;
+            foreach (var error in captured) ComponentBoundarySearch.CaptureAt(boundary, boundary, error);
         }
 
         private static Exception? TakeFallbackReconcileFailure(ComponentFiber boundary)

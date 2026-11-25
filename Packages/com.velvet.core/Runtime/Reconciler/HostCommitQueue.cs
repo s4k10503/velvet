@@ -41,7 +41,7 @@ namespace Velvet
         {
             var at = ChildListWrites.PhysicalIndexOf(parent, element);
             if (at < 0) return;
-            using var removing = new ChildListWrites.RemovalOwnerScope(_ctx.Pass, OwnerOfARemoval(owner));
+            using var removing = new ChildListWrites.RemovalOwnerScope(OwnerOfARemoval(owner));
             _cleaner.RemoveElement(parent, at, plan);
         }
 
@@ -50,7 +50,7 @@ namespace Velvet
         internal void RemoveRow(VisualElement parent, VisualElement element, ComponentFiber? owner = null)
         {
             using var queued = ChildListWrites.QueueWrite();
-            using var removing = new ChildListWrites.RemovalOwnerScope(_ctx.Pass, OwnerOfARemoval(owner));
+            using var removing = new ChildListWrites.RemovalOwnerScope(OwnerOfARemoval(owner));
             ChildListWrites.RemoveRow(parent, element);
         }
 
@@ -63,7 +63,7 @@ namespace Velvet
         {
             var pass = _ctx.Pass;
             if (pass.UnmountingFiber is { } unmounting) return unmounting.Parent;
-            return owner ?? pass.RemovalOwner ?? _ctx.FiberStack.Current;
+            return owner ?? ChildListWrites.RemovalOwner ?? _ctx.FiberStack.Current;
         }
 
         // Re-places the non-LIS elements so the slot range [slotStart, slotStart + count) ends up in
