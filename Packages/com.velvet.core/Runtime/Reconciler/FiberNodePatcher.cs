@@ -1560,7 +1560,7 @@ namespace Velvet
             {
                 detached ??= new DetachedMountContext(
                     DetachedHost.OfPlaceholder(placeholder, declaringFiber), row: null, descendantNodes,
-                    MotionContext.EnterFlagsOn(_ctx.ComponentContextStack), declaringFiber);
+                    _ctx.ComponentContextStack, declaringFiber);
                 f.DetachedMountContext = detached;
             }
         }

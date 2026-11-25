@@ -53,7 +53,7 @@ namespace Velvet
                 frame.EnclosingCapture == null ? Owner?.ReconcilingTree ?? ctx.CurrentFiberTree : null,
                 frame.EnclosingCapture,
                 pushed.ToArray(),
-                MotionContext.EnterFlagsOn(stack),
+                MotionContext.OutlivingPass(stack.SnapshotTops())!,
                 children);
             for (var i = _captures.Count - 1; i >= 0; i--)
             {
@@ -97,21 +97,36 @@ namespace Velvet
         internal readonly DetachedHostCapture? EnclosingCapture;
         // Each context's entries in the order they were pushed.
         internal readonly KeyValuePair<object, object>[] Local;
-        // MotionContext.EnterFlagsOn where the capture was taken: what a row the range creates under it starts from.
-        internal readonly KeyValuePair<object, object>[] EnterFlags;
+        // The top value of every context where the capture was taken, less the orchestration, which a range rendered
+        // under this capture pushes as PushSnapshot says.
+        internal readonly List<KeyValuePair<object, object>> Tops;
         // A Portal's children in the render that reached it; null for a list.
         internal readonly VNode?[]? Children;
 
         internal DetachedHostCapture(
             DetachedHost host, VNode?[]? tree, DetachedHostCapture? enclosingCapture,
-            KeyValuePair<object, object>[] local, KeyValuePair<object, object>[] enterFlags, VNode?[]? children)
+            KeyValuePair<object, object>[] local, List<KeyValuePair<object, object>> tops, VNode?[]? children)
         {
             Host = host;
             Tree = tree;
             EnclosingCapture = enclosingCapture;
             Local = local;
-            EnterFlags = enterFlags;
+            Tops = tops;
             Children = children;
+        }
+
+        // Every entry of snapshot where the Providers above the owner are not on the cursor (a spine that found no node
+        // for a fiber on its way down), else only the enter flags, which nothing rebuilds: motion.md keeps a presence
+        // child's initial: false for as long as the child stays. Each key pushed goes into pushedKeys for the pop.
+        internal static void PushSnapshot(
+            ComponentContextStack stack, List<KeyValuePair<object, object>> snapshot, bool all, List<object> pushedKeys)
+        {
+            for (var i = 0; i < snapshot.Count; i++)
+            {
+                if (!all && !MotionContext.IsEnterFlag(snapshot[i].Key)) continue;
+                stack.PushRaw(snapshot[i].Key, snapshot[i].Value);
+                pushedKeys.Add(snapshot[i].Key);
+            }
         }
 
         internal bool SameRenderAs(DetachedHostCapture other)
@@ -171,20 +186,20 @@ namespace Velvet
         // Null for a Portal's children, whose current nodes are the Portal's capture's.
         internal readonly DetachedRow? Row;
         internal readonly VNode?[]? DescendantNodes;
-        // MotionContext.EnterFlagsOn where the fiber was created: motion.md keeps a presence child's initial: false
-        // for as long as the child stays.
-        internal readonly KeyValuePair<object, object>[] EnterFlags;
+        // The top value of every context where the fiber was created, less the orchestration
+        // (MotionContext.OutlivingPass), pushed as DetachedHostCapture.PushSnapshot says.
+        internal readonly List<KeyValuePair<object, object>> EnclosingSnapshot;
         internal readonly ComponentFiber Anchor;
         internal readonly bool RootProviderChildrenStartAtWalkRoot;
 
         internal DetachedMountContext(
-            DetachedHost host, DetachedRow? row, VNode?[]? descendantNodes, KeyValuePair<object, object>[] enterFlags,
+            DetachedHost host, DetachedRow? row, VNode?[]? descendantNodes, ComponentContextStack stack,
             ComponentFiber anchor, bool rootProviderChildrenStartAtWalkRoot = false)
         {
             Host = host;
             Row = row;
             DescendantNodes = descendantNodes;
-            EnterFlags = enterFlags;
+            EnclosingSnapshot = MotionContext.OutlivingPass(stack.SnapshotTops())!;
             Anchor = anchor;
             RootProviderChildrenStartAtWalkRoot = rootProviderChildrenStartAtWalkRoot;
         }

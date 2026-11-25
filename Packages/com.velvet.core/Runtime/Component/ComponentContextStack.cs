@@ -47,17 +47,6 @@ namespace Velvet
             return context.DefaultValue;
         }
 
-        internal bool TryGetTop(object key, out object? value)
-        {
-            if (_stacks.TryGetValue(key, out var stack) && stack.Count > 0)
-            {
-                value = stack.Peek().Value;
-                return true;
-            }
-            value = null;
-            return false;
-        }
-
         // Captures the current top value of every active context as an untyped snapshot. Used to carry the
         // enclosing context of a deferred mount (a Portal's children reconcile after the main pass has unwound the
         // cursor) so it can be restored via PushRaw/PopRaw around that deferred reconcile, which belongs to the same

@@ -823,11 +823,7 @@ namespace Velvet
                 if (detachedHost.Resolve() is { } resolved)
                 {
                     scope.PushedKeys = new List<object>();
-                    for (var i = 0; i < resolved.EnterFlags.Length; i++)
-                    {
-                        stack.PushRaw(resolved.EnterFlags[i].Key, resolved.EnterFlags[i].Value);
-                        scope.PushedKeys.Add(resolved.EnterFlags[i].Key);
-                    }
+                    DetachedHostCapture.PushSnapshot(stack, resolved.Tops, all: scope.Spine.Lost, scope.PushedKeys);
                     resolved.PushChain(stack, scope.PushedKeys);
                 }
             }
@@ -855,7 +851,7 @@ namespace Velvet
             foreach (var f in host.AppendedSince(scope.Unstamped))
             {
                 detached ??= new DetachedMountContext(
-                    scope.Host, row, new[] { itemVnode }, MotionContext.EnterFlagsOn(_ctx.ComponentContextStack), host,
+                    scope.Host, row, new[] { itemVnode }, _ctx.ComponentContextStack, host,
                     rootProviderChildrenStartAtWalkRoot: true);
                 f.DetachedMountContext = detached;
             }
@@ -874,8 +870,7 @@ namespace Velvet
                 DetachedMountContext? detached = null;
                 foreach (var f in host.AppendedSince(scope.Unstamped))
                 {
-                    detached ??= new DetachedMountContext(
-                        scope.Host, row: null, descendantNodes: null, MotionContext.EnterFlagsOn(stack), host);
+                    detached ??= new DetachedMountContext(scope.Host, row: null, descendantNodes: null, stack, host);
                     f.DetachedMountContext = detached;
                 }
                 host.EndAppendLog();

@@ -628,7 +628,7 @@ namespace Velvet
             foreach (var f in anchor.AppendedSince(appendedFrom))
             {
                 detachedContext ??= new DetachedMountContext(
-                    detachedHost, row: null, children, MotionContext.EnterFlagsOn(_ctx.ComponentContextStack), anchor);
+                    detachedHost, row: null, children, _ctx.ComponentContextStack, anchor);
                 f.DetachedMountContext = detachedContext;
             }
         }

@@ -426,8 +426,9 @@ namespace Velvet.Tests
     /// <summary>
     /// What a detached mount keeps from where it was created rather than reading where its host is now: a row a scroll
     /// mounts inside a presence child its presence's first render created under <c>initial: false</c> plays no mount
-    /// enter, and a Portal child whose presence child is exiting still reads the Provider the Portal's children put
-    /// above it.
+    /// enter; a Portal child whose presence child is exiting still reads the Provider the Portal's children put above
+    /// it; and where an exiting presence child holds the Portal's declarer or the list's host, the Portal's child and a
+    /// row a scroll mounts still read the Provider above the presence.
     /// </summary>
     [TestFixture]
     internal sealed class DetachedContextMotionTests : MotionSimulatedPanelTestsBase
@@ -494,6 +495,80 @@ namespace Velvet.Tests
             // Assert — null where the child did not render.
             Assert.That(s_reading, Is.EqualTo("inside"));
         }
+
+        // GREEN_ON_BASE(characterization): the base pushes the child's whole snapshot whether or not the spine found its way.
+        // What this pins is that it still does where an edge above finds no node for its child, which the exiting
+        // presence child holding the Portal's declarer is: push only the enter flags there and the child reads the
+        // context's default.
+        [Test]
+        public void Given_APortalDeclaredInsideAnExitingPresenceChild_When_ThePortalsChildReRendersAlone_Then_ItStillReadsTheProviderAboveThePresence()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(PresenceOverPortalDeclarerRender, key: "outer"));
+            s_setPresent.Invoke(false);
+            mounted.FlushStateForTest();
+            s_reading = null;
+
+            // Act
+            s_setReader.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_reading, Is.EqualTo("outer"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base mounts a scroll's rows over the whole snapshot of the list.
+        // What this pins is that it still does where the spine to the list's host finds no node for it, which the
+        // exiting presence child holding the host is: push only the capture's enter flags there and the row reads the
+        // context's default.
+        [Test]
+        public void Given_AListWhoseHostIsInAnExitingPresenceChild_When_AScrollMountsARow_Then_TheRowReadsTheProviderAboveThePresence()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(PresenceOverListHostRender, key: "outer"));
+            s_setPresent.Invoke(false);
+            mounted.FlushStateForTest();
+
+            // Act
+            mounted.Root.Reconciler.Context.VirtualListControllers[Root.Q<ScrollView>()]
+                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert — null where no row rendered.
+            Assert.That(s_reading, Is.EqualTo("outer"));
+        }
+
+        // The exit holds the presence child until the panel ticks, which nothing here does.
+        private static VNode UseLeavingAround(VNode child)
+        {
+            var (present, setPresent) = Hooks.UseState(true);
+            s_setPresent = setPresent;
+            return V.Provider(s_theme, "outer", new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: new VNode[]
+                {
+                    present
+                        ? V.Motion(key: "leaving", name: "leaving", variants: s_fade, initial: "hidden",
+                            animate: "visible", exit: "hidden", transition: s_child, children: new[] { child })
+                        : null,
+                }),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PresenceOverPortalDeclarerRender()
+            => UseLeavingAround(V.Component(PortalDeclarerRender, key: "declarer"));
+
+        [Component(Compiler = false)]
+        private static VNode PortalDeclarerRender()
+            => V.Portal(s_portalTarget, new VNode[] { V.Component(ReaderRender, key: "reader") });
+
+        [Component(Compiler = false)]
+        private static VNode PresenceOverListHostRender() => UseLeavingAround(V.Component(ListHostRender, key: "host"));
+
+        [Component(Compiler = false)]
+        private static VNode ListHostRender()
+            => V.VirtualList(new List<string> { "r0" }, id => id, itemHeight: 30f,
+                renderer: id => V.Component(ReaderRender, key: id), overscan: 0);
 
         [Component(Compiler = false)]
         private static VNode PresenceListHostRender()

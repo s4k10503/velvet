@@ -76,25 +76,12 @@ namespace Velvet
         private static bool IsOrchestration(KeyValuePair<object, object> entry)
             => ReferenceEquals(entry.Key, Orchestration);
 
-        // What a detached mount's stamp keeps of the two enter flags, from where its fiber was created
-        // (DetachedMountContext.EnterFlags), rather than reading them from where its host is now.
-        internal static KeyValuePair<object, object>[] EnterFlagsOn(ComponentContextStack stack)
-        {
-            var blocked = stack.TryGetTop(EntersBlocked, out var blockedValue);
-            var withheld = stack.TryGetTop(EntersWithheld, out var withheldValue);
-            if (!blocked && !withheld) return Array.Empty<KeyValuePair<object, object>>();
-            var flags = new KeyValuePair<object, object>[(blocked ? 1 : 0) + (withheld ? 1 : 0)];
-            var at = 0;
-            if (blocked) flags[at++] = new KeyValuePair<object, object>(EntersBlocked, blockedValue!);
-            if (withheld) flags[at] = new KeyValuePair<object, object>(EntersWithheld, withheldValue!);
-            return flags;
-        }
-
         // Left out of a DetachedHostCapture: the orchestration outlives no pass, and the enter flags come from the stamp.
         internal static bool TravelsOnlyInStamps(KeyValuePair<object, object> entry)
-            => ReferenceEquals(entry.Key, Orchestration)
-               || ReferenceEquals(entry.Key, EntersBlocked)
-               || ReferenceEquals(entry.Key, EntersWithheld);
+            => ReferenceEquals(entry.Key, Orchestration) || IsEnterFlag(entry.Key);
+
+        internal static bool IsEnterFlag(object key)
+            => ReferenceEquals(key, EntersBlocked) || ReferenceEquals(key, EntersWithheld);
     }
 
     // Mutable per-subtree stagger state pushed onto MotionContext.Orchestration (see its doc).
