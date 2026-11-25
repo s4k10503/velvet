@@ -141,7 +141,7 @@ namespace Velvet
             {
                 return;
             }
-            if (FiberFontScope.IsMarker(source))
+            if (MarkerSheets.IsMarker(source))
             {
                 return;
             }

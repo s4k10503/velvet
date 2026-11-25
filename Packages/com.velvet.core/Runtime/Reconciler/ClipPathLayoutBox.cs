@@ -211,6 +211,12 @@ namespace Velvet
                     entry.Write!(outer);
                 }
             }
+            // The duration copied above can give the wrapper a transition of what it now lays out, as a duration class it
+            // mirrors can (SyncClasses).
+            if (outer.transitionDuration.keyword != StyleKeyword.Null)
+            {
+                StyleTransitionBehavior.Watch(binding.Wrapper);
+            }
             SyncClasses(element);
         }
 
@@ -258,6 +264,7 @@ namespace Velvet
                 if (mirrored == null || !mirrored.Contains(cls))
                 {
                     wrapper.AddToClassList(cls);
+                    StyleTransitionBehavior.TrackClass(wrapper, cls);
                 }
             }
             binding.MirroredClasses = live;

@@ -187,6 +187,10 @@ namespace Velvet
         internal static readonly EngineMember HasRunningStyleAnimation = Method(UIElements,
             VisualElementType, "HasRunningAnimation", "System.Boolean", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
 
+        // RunningStyleAnimations' read of whether a transition runs on an element at all.
+        internal static readonly EngineMember HasRunningStyleAnimations =
+            ReadProperty(UIElements, VisualElementType, "hasRunningAnimations", "System.Boolean");
+
         // StyleFilterEngineWrite's filter write past a running transform-origin transition.
         internal static readonly EngineMember CancelStyleAnimation = Method(UIElements,
             VisualElementType, "CancelAnimation", "System.Void", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
@@ -784,6 +788,27 @@ namespace Velvet
         internal FieldInfo? ResolveField() => Resolve() as FieldInfo;
 
         internal PropertyInfo? ResolveProperty() => Resolve() as PropertyInfo;
+
+        // Open-instance delegates over the property's getter or over the method, which read a value-typed result without
+        // the box an invocation through the reflected member returns; null where the member does not resolve or the
+        // runtime refuses to bind it (EngineMemberResolutionTests names each bind the runtime makes).
+        internal TGetter? ResolveGetter<TGetter>() where TGetter : Delegate => Bound<TGetter>(ResolveProperty()?.GetMethod);
+
+        internal TMethod? ResolveOpenDelegate<TMethod>() where TMethod : Delegate => Bound<TMethod>(ResolveMethod());
+
+        // Any exception: one escaping here fails the static initializer of RunningStyleAnimations, which holds the
+        // delegates, and with it every read of either.
+        private static TDelegate? Bound<TDelegate>(MethodInfo? method) where TDelegate : Delegate
+        {
+            try
+            {
+                return method == null ? null : (TDelegate)Delegate.CreateDelegate(typeof(TDelegate), method);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
 
         internal Type? ResolveType() => Resolve() as Type;
 

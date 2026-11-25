@@ -194,6 +194,7 @@ namespace Velvet
         // once the rank RawAdded gives it outranks what took it, or once that goes.
         private static void Add(VisualElement element, string cls, long priority)
         {
+            StyleTransitionBehavior.TrackClass(element, cls);
             if (!StyleClassProjection.Suppresses(element, cls))
             {
                 element.AddToClassList(cls);

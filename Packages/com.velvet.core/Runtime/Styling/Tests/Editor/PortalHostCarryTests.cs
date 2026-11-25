@@ -417,6 +417,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APanelRootCarryingADurationUtility_When_ALayerPortalMounts_Then_TheHostRootIsMarkedForItsStylePasses()
+        {
+            // Arrange — under UI Toolkit's initial transition-property of all, the duration gives the host root
+            // transitions of the properties it can only switch.
+            _host.Root.AddToClassList("duration-1000");
+
+            // Act
+            _mounted = V.Mount(_host.Root, V.Portal(UILayer.Overlay, new VNode[] { V.Div(name: "overlaid") }));
+
+            // Assert — null where the duration was not carried, which leaves nothing to mark.
+            var hostRoot = HostRootHolding("overlaid");
+            Assert.That(hostRoot.ClassListContains("duration-1000")
+                ? hostRoot.ClassListContains("velvet-transition-watch") : (bool?)null, Is.True);
+        }
+
+        [Test]
         public void Given_AHostCarryingAPanelRootClass_When_ItComesOffThePanelRootAndThatPanelTicks_Then_ItComesOffTheHostRoot()
         {
             // Arrange

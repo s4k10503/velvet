@@ -64,6 +64,7 @@ namespace Velvet
             if (curve != null) layer.Curve = new StyleList<EasingFunction>(new List<EasingFunction>(curve));
             if (delay != null) layer.Delay = new StyleList<TimeValue>(new List<TimeValue>(delay));
             Apply(element.style, hold);
+            if (duration != null || delay != null) StyleTransitionBehavior.Watch(element);
         }
 
         internal static void End(VisualElement element, Play? play)
