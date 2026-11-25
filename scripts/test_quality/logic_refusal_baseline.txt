@@ -43,7 +43,7 @@ Packages/com.velvet.core/Runtime/Reconciler/FiberRefPlacement.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberSliderKeyboard.cs	5
 Packages/com.velvet.core/Runtime/Reconciler/FiberTextFieldLength.cs	7
 Packages/com.velvet.core/Runtime/Reconciler/FiberWrapperElementAppliers.cs	1
-Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs	18
+Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs	19
 Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs	6
 Packages/com.velvet.core/Runtime/Reconciler/PanelFocusMemory.cs	5
 Packages/com.velvet.core/Runtime/Reconciler/PanelHostFactory.cs	1
@@ -122,6 +122,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleThemeTokens.cs	7
 Packages/com.velvet.core/Runtime/Styling/StyleTransformValueParser.cs	6
 Packages/com.velvet.core/Runtime/Styling/StyleTransitionBehavior.cs	10
 Packages/com.velvet.core/Runtime/Styling/StyleTransitionInterpolation.cs	10
+Packages/com.velvet.core/Runtime/Styling/StyleUserClassProperties.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleUtilityProperties.g.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleVariantClass.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleVariantPayload.cs	6

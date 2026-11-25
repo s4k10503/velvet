@@ -21,6 +21,9 @@ namespace Velvet
     {
         internal const string MarkerClass = "velvet-class-probe";
 
+        internal static bool IsProbe(VisualElement element)
+            => ChildListWrites.ParentOf(element) is { } parent && parent.ClassListContains(MarkerClass);
+
         private sealed class PanelCache
         {
             public readonly Dictionary<string, StyleLonghandSet> Known = new(StringComparer.Ordinal);

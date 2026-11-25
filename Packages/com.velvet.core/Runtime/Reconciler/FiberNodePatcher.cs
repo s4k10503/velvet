@@ -3198,6 +3198,7 @@ namespace Velvet
 
             Configure<HasVariantOp, StyleHasVariantManipulator>(element, hasAny,
                 new HasVariantOp(@checked, focus, checkedDeclarations, focusDeclarations));
+            if (hasAny) s_hasContexts.Add(_ctx);
         }
 
         // Collects the payloads of every has-[:checked]: / has-[:focus]: token of the given kind. A payload
@@ -3277,6 +3278,7 @@ namespace Velvet
                 return;
             }
             _ctx.HasClassVariants[element] = rules;
+            s_hasContexts.Add(_ctx);
 
             // Evaluate now when children are already placed — the normal create / patch paths reconcile
             // children BEFORE this class pass, so the just-registered rule lights up in the same pass. The
@@ -3298,35 +3300,35 @@ namespace Velvet
         {
             foreach (var rule in rules)
             {
-                var on = false;
-                var content = element.contentContainer;
-                var count = ChildListWrites.HierarchyCount(content);
-                for (var i = 0; i < count; i++)
-                {
-                    if (SubtreeCarriesClass(ChildListWrites.HierarchyChild(content, i), rule.ClassName!))
-                    {
-                        on = true;
-                        break;
-                    }
-                }
-                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Has, ctx,
-                    declarations: rule.Declarations);
+                EvaluateHasClassRule(ctx, element, rule);
             }
         }
 
-        // :has(.foo) tests the class attribute, which the cascade never edits: a class the projection took off
-        // an element to let a variant win still matches, and one a variant payload put on it does not.
-        private static bool SubtreeCarriesClass(VisualElement root, string cls)
+        private static void EvaluateHasClassRule(ReconcilerContext ctx, VisualElement element,
+            (string? ClassName, string?[] Payloads, int[] Declarations) rule)
         {
-            if ((root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
-                || StyleClassProjection.SuppressesOwnClass(root, cls))
-            {
-                return true;
-            }
-            var count = ChildListWrites.HierarchyCount(root);
+            var on = DescendantCarriesClass(element.contentContainer, rule.ClassName!);
+            StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Has, ctx,
+                declarations: rule.Declarations);
+        }
+
+        // :has(.foo) tests the class attribute, which the cascade never edits: a class the projection took off
+        // an element to let a variant win still matches, and one a variant payload put on it does not. Nor does a
+        // probe StyleUserClassProperties hosts; IsProbe is asked only where an element carries the class.
+        private static bool SubtreeCarriesClass(VisualElement root, string cls)
+            => (((root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
+                    || StyleClassProjection.SuppressesOwnClass(root, cls))
+                && !StyleUserClassProperties.IsProbe(root))
+                || DescendantCarriesClass(root, cls);
+
+        private static bool DescendantCarriesClass(VisualElement parent, string cls)
+        {
+            var count = ChildListWrites.HierarchyCount(parent);
             for (var i = 0; i < count; i++)
             {
-                if (SubtreeCarriesClass(ChildListWrites.HierarchyChild(root, i), cls))
+                var child = ChildListWrites.HierarchyChild(parent, i);
+                if (!FiberZLayerCoordinator.IsReadByHas(child, out var unplaced)) continue;
+                if (SubtreeCarriesClass(child, cls) || (unplaced != null && SubtreeCarriesClass(unplaced, cls)))
                 {
                     return true;
                 }
@@ -3382,43 +3384,35 @@ namespace Velvet
         // Dirty-scoped: a flush mutates only its OWN region — the elements committed as children of regionRoot
         // (the flushing fiber's MountPoint) and their subtrees — plus any Portal target it (re)mounted children
         // into. A has- element matches on its DESCENDANTS, so its match can change only if a mutation landed
-        // inside its subtree; that means the has- element is regionRoot itself or one of its ANCESTORS (a has-
-        // element strictly BELOW regionRoot whose descendant changed was reconciled in this same flush, so its
-        // own post-children pass already covered it, after its descendants' recorded halves had applied). So rather
-        // than re-scan EVERY registered has- element each flush, walk up from regionRoot — and from each active Portal
-        // target, whose children live outside regionRoot's subtree — and re-derive only the registered has- elements found on those chains. This is
-        // O(depth) instead of O(registered has- elements x subtree scan), the win the sweep needs under many
-        // has- elements x frequent flushes. A null regionRoot (region unknown) falls back to re-deriving all so
-        // a stale payload is never missed. Idempotent (each evaluation reads the current subtree); no has- map
-        // is mutated by an evaluation (payloads resolve to USS classes / inline styles / stacked manipulators,
-        // not has- registrations), so walking and re-deriving in place is safe.
+        // inside its subtree. One strictly BELOW regionRoot is left to its own post-children pass, which the flush's
+        // walk ran wherever it changed a descendant of that element, behind its descendants' recorded halves; that pass
+        // reads a relocated descendant through its placeholder (FiberZLayerCoordinator.IsReadByHas), and a Portal's
+        // teardown and a play's classes, which land after it, re-derive the tree around them (RestyleTreeAround). So
+        // rather than re-scan EVERY registered has- element each flush, walk up from regionRoot — and from each active
+        // Portal target, whose children live outside regionRoot's subtree — and re-derive only the registered has-
+        // elements found on those chains. This is O(depth) instead of O(registered has- elements x subtree scan), the
+        // win the sweep needs under many has- elements x frequent flushes. A null regionRoot (region unknown) falls
+        // back to re-deriving every registered has- element so a stale payload is never missed. Idempotent (each
+        // evaluation reads the current subtree); no has- map is mutated by an evaluation (payloads resolve to USS
+        // classes / inline styles / stacked manipulators, not has- registrations), so walking and re-deriving in place
+        // is safe.
         internal static void RefreshHasVariants(ReconcilerContext? ctx, VisualElement? regionRoot)
         {
-            if (ctx == null)
+            if (ctx == null || s_hasContexts.Count == 0)
             {
-                return;
-            }
-            var hasClass = ctx.HasClassVariants.Count > 0;
-            var hasManip = ctx.HasVariantManipulators.Count > 0;
-            if (!hasClass && !hasManip)
-            {
-                // Zero-cost when has- is unused anywhere (the common case): both maps empty.
                 return;
             }
 
             if (regionRoot == null)
             {
-                // Region unknown — re-derive every registered has- element so a stale payload is never missed.
-                if (hasClass)
+                for (var i = 0; i < s_hasContexts.Count; i++)
                 {
-                    foreach (var kv in ctx.HasClassVariants)
+                    if (!s_hasContexts.TryGet(i, out var holder)) continue;
+                    foreach (var kv in holder.HasClassVariants)
                     {
-                        EvaluateHasClass(ctx, kv.Key, kv.Value);
+                        EvaluateHasClass(holder, kv.Key, kv.Value);
                     }
-                }
-                if (hasManip)
-                {
-                    foreach (var kv in ctx.HasVariantManipulators)
+                    foreach (var kv in holder.HasVariantManipulators)
                     {
                         kv.Value.Rescan();
                     }
@@ -3426,7 +3420,7 @@ namespace Velvet
                 return;
             }
 
-            ReevaluateHasOnAncestorChain(ctx, regionRoot, hasClass, hasManip);
+            ReevaluateHasOnAncestorChain(regionRoot);
 
             // A Portal commits its children into a target OUTSIDE regionRoot's subtree, so a has- ancestor of
             // that target is not on regionRoot's chain. Portals are rare (this map is empty otherwise); when any
@@ -3440,24 +3434,124 @@ namespace Velvet
                     // the never-mounted missing-registry path.
                     if (info.Target != null)
                     {
-                        ReevaluateHasOnAncestorChain(ctx, info.Target, hasClass, hasManip);
+                        ReevaluateHasOnAncestorChain(info.Target);
                     }
                 }
             }
         }
 
-        // Re-derives every registered has- element on the ancestor chain from root (inclusive) up to the DOM
-        // root. O(depth) with O(1) lookups — see RefreshHasVariants for why only this chain can be affected.
-        private static void ReevaluateHasOnAncestorChain(
-            ReconcilerContext ctx, VisualElement root, bool hasClass, bool hasManip)
+        // For a write to element's rows or classes that a post-children pass need not follow: re-derives the structural
+        // variants of its rows and the has- variants of it and its ancestors. While ctx's pass records, applies or is
+        // still on the stack the tree is not finished, so the end of that pass does it (Reconciler.FinishPass);
+        // otherwise it is done at once.
+        internal static void RestyleTreeAround(ReconcilerContext? ctx, VisualElement element)
         {
+            if (PassIsOpen(ctx))
+            {
+                ctx!.TreeRestyleSeeds.Add(element);
+                return;
+            }
+            if (ctx is { IsDisposed: false }) ctx.Root?.ApplyStructuralVariantsOf(element);
+            ReevaluateHasOnAncestorChain(element);
+        }
+
+        // A play's write of classes onto element (StyleAnimationClassUtils), with the companions it wrote beside them.
+        // Only a has-[.class]: rule naming one of those can change its match, apart from a velvet- marker the write may
+        // add, which no application rule names: the cascade's moves among the element's other classes leave each one's
+        // answer as it was (SubtreeCarriesClass), and no write of a class moves a row. So outside a pass only those
+        // rules on the chain above element are re-derived, at a lookup per context and ancestor and a subtree scan per
+        // rule named; inside one the element waits with the other seeds, as RestyleTreeAround's do.
+        internal static void RefreshHasVariantsForClasses(ReconcilerContext? ctx, VisualElement element, string[] classes,
+            List<string>? companions)
+        {
+            if (PassIsOpen(ctx))
+            {
+                ctx!.TreeRestyleSeeds.Add(element);
+                return;
+            }
+            if (s_hasContexts.Count == 0)
+            {
+                return;
+            }
+            for (var e = element; e != null; e = ChildListWrites.ParentOf(e))
+            {
+                for (var i = 0; i < s_hasContexts.Count; i++)
+                {
+                    if (!s_hasContexts.TryGet(i, out var holder) || !holder.HasClassVariants.TryGetValue(e, out var rules))
+                    {
+                        continue;
+                    }
+                    foreach (var rule in rules)
+                    {
+                        if (Array.IndexOf(classes, rule.ClassName) < 0
+                            && !(companions != null && companions.Contains(rule.ClassName!)))
+                        {
+                            continue;
+                        }
+                        EvaluateHasClassRule(holder, e, rule);
+                    }
+                }
+            }
+        }
+
+        // Whether ctx's pass records, applies or is still on the stack, so the tree it is making is not finished.
+        private static bool PassIsOpen(ReconcilerContext? ctx)
+            => ctx != null && (ctx.SharedReconcileDepth > 0 || ctx.Pass.Recording || ctx.Pass.Applying);
+
+        private static readonly HashSet<VisualElement> s_seedAncestors = new();
+
+        // The has- half of RestyleTreeAround for the seeds a pass queued, re-deriving each element above them once
+        // however many seeds share it: a walk stops at an element an earlier one reached, whose own ancestors it reached
+        // as well. So the drain is bounded by the elements on the seeds' chains rather than by seeds times depth, and a
+        // has- element above many seeds scans its subtree once.
+        internal static void RefreshHasVariantsAbove(HashSet<VisualElement> seeds)
+        {
+            try
+            {
+                foreach (var seed in seeds)
+                {
+                    for (var e = seed; e != null && s_seedAncestors.Add(e); e = ChildListWrites.ParentOf(e))
+                    {
+                        ReevaluateHasAt(e);
+                    }
+                }
+            }
+            finally
+            {
+                s_seedAncestors.Clear();
+            }
+        }
+
+        // The contexts that have held a has- rule. A walk up from an element reads all of them rather than the
+        // walking context's tables alone: a Portal and a root mounted inside another root's element write into a
+        // tree whose has- elements another context registered.
+        private static readonly WeakContextList s_hasContexts = new();
+
+        // Re-derives every registered has- element on the ancestor chain from root (inclusive) up to the DOM
+        // root. O(depth) O(1) lookups for each context s_hasContexts holds — see RefreshHasVariants for why only this
+        // chain can be affected.
+        private static void ReevaluateHasOnAncestorChain(VisualElement root)
+        {
+            if (s_hasContexts.Count == 0)
+            {
+                return;
+            }
             for (var e = root; e != null; e = ChildListWrites.ParentOf(e))
             {
-                if (hasClass && ctx.HasClassVariants.TryGetValue(e, out var rules))
+                ReevaluateHasAt(e);
+            }
+        }
+
+        private static void ReevaluateHasAt(VisualElement element)
+        {
+            for (var i = 0; i < s_hasContexts.Count; i++)
+            {
+                if (!s_hasContexts.TryGet(i, out var ctx)) continue;
+                if (ctx.HasClassVariants.TryGetValue(element, out var rules))
                 {
-                    EvaluateHasClass(ctx, e, rules);
+                    EvaluateHasClass(ctx, element, rules);
                 }
-                if (hasManip && ctx.HasVariantManipulators.TryGetValue(e, out var manipulator))
+                if (ctx.HasVariantManipulators.TryGetValue(element, out var manipulator))
                 {
                     manipulator.Rescan();
                 }
@@ -3718,6 +3812,13 @@ namespace Velvet
             {
                 return;
             }
+            // A row of an anchor stands among its list's rows, which the anchor's own pass reads; its place in the
+            // anchor alone is not where it stands.
+            if (logicalParent!.userData is ItemMountPlace)
+            {
+                ApplyStructuralVariants(logicalParent);
+                return;
+            }
             // Exclude the reconciler-invisible children (LogicalChildSlots.IsInvisible) from the sibling count:
             // none is part of the logical child list a first:/last:/nth match sees.
             EvaluateStructural(_ctx, element, LogicalChildSlots.ToLogical(logicalParent!, logicalIndex),
@@ -3740,50 +3841,173 @@ namespace Velvet
         // Container post-children pass: re-derives every structural child's position-based match from the
         // live sibling order, so a child added / removed / reordered updates first:/last:/odd:/even: across
         // the whole list. Runs at the same hook as gap/divide (after children reconcile). Stateless and
-        // idempotent, with a cheap global early-out when no structural variant exists anywhere.
+        // idempotent. A context reads only the rules it registered, so over a container other contexts place rows
+        // into (SharedRowContainers) it re-derives theirs with their own.
         private readonly List<VisualElement?> _structuralRows = new();
+        private readonly List<VisualElement?> _expandedRows = new();
 
         internal void ApplyStructuralVariants(VisualElement container)
         {
-            if (container == null || _ctx.StructuralVariants.Count == 0)
+            if (container == null)
             {
                 return;
             }
+            // The rows of an anchor a list holds stand among the list's (ExpandItemMountContainers): matched where the
+            // list's last pass put them while the anchor holds as many, else by a pass over the whole list, which places
+            // every anchor again. An unplaced anchor is matched over its own rows.
+            if (container.userData is ItemMountPlace place && ChildListWrites.ParentOf(container) is { } list)
+            {
+                if (_ctx.StructuralVariants.Count == 0 || ApplyStructuralVariantsInPlace(container, place))
+                {
+                    return;
+                }
+                container = list;
+            }
+            ApplyStructuralVariantsOf(_ctx, container, _structuralRows, _expandedRows);
+            if (!_ctx.SharesRowContainers)
+            {
+                return;
+            }
+            if (!SharedRowContainers.TryGetPlacers(container, out var placers))
+            {
+                return;
+            }
+            for (var i = 0; i < placers.Count; i++)
+            {
+                // MUTANT_SURVIVES(equivalent, clause removed): this context's rows were re-derived just above, and doing
+                // it again reads the same tree.
+                if (placers.TryGet(i, out var other) && !ReferenceEquals(other, _ctx))
+                {
+                    ApplyStructuralVariantsOf(other, container, _structuralRows, _expandedRows);
+                }
+            }
+        }
 
-            // The reconciler-invisible children — a filter bounds spacer, a relocated z-* element, a ring
-            // band — are not logical siblings, so first:/last:/nth must neither count them nor
-            // land on one. The rendered children are the slots, read from the row model in one call, wherever the
-            // invisible ones sit. The ruled ones are collected before any payload is written: a payload can add an
-            // invisible sibling (a filter bounds spacer).
-            List<(VisualElement Element, int Index, List<(StyleStructuralKind Kind, int N, string[] Payloads,
-                int[] Declarations, long Priority)> Rules)>? ruled = null;
-            var slotOccupants = _structuralRows;
+        // False where no pass over the list has placed the anchor since the latest range placement, or it now holds a
+        // different number of rows than that pass found, which moves every row behind it.
+        private bool ApplyStructuralVariantsInPlace(VisualElement anchor, ItemMountPlace place)
+        {
+            // MUTANT_SURVIVES(equivalent, line removed): this buffer is empty here, as ApplyStructuralVariantsOf and a
+            // true return below empty it once read, and a false return goes on into ApplyStructuralVariantsOf, which
+            // empties it first.
+            _structuralRows.Clear();
+            ChildListWrites.Rows(anchor, 0, int.MaxValue, _structuralRows);
+            if (place.Placement != ItemMountPlace.Placements || place.Offset < 0 || _structuralRows.Count != place.Count)
+            {
+                return false;
+            }
+            var ruled = RuledRows(_ctx, _structuralRows, place.Offset);
+            // MUTANT_SURVIVES(equivalent, line removed): each pass empties this buffer before it reads it.
+            _structuralRows.Clear();
+            EvaluateRuled(_ctx, ruled, place.Total);
+            return true;
+        }
+
+        private static void ApplyStructuralVariantsOf(ReconcilerContext ctx, VisualElement container,
+            List<VisualElement?> slotOccupants, List<VisualElement?> expanded)
+        {
+            if (ctx.StructuralVariants.Count == 0)
+            {
+                return;
+            }
             slotOccupants.Clear();
             ChildListWrites.Rows(container, 0, int.MaxValue, slotOccupants);
-            var count = slotOccupants.Count;
-            for (var slot = 0; slot < count; slot++)
+            var rows = ExpandItemMountContainers(slotOccupants, expanded);
+            var count = rows.Count;
+            var ruled = RuledRows(ctx, rows, 0);
+            // MUTANT_SURVIVES(equivalent, line removed): each pass empties this buffer before it reads it.
+            slotOccupants.Clear();
+            expanded.Clear();
+            EvaluateRuled(ctx, ruled, count);
+        }
+
+        // The reconciler-invisible children — a filter bounds spacer, a relocated z-* element, a ring
+        // band — are not logical siblings, so first:/last:/nth must neither count them nor
+        // land on one. The rendered children are the slots, read from the row model in one call, wherever the
+        // invisible ones sit. The ruled ones are collected before any payload is written: a payload can add an
+        // invisible sibling (a filter bounds spacer). rows[0] stands at offset among its list's rows.
+        private static List<(VisualElement Element, int Index, List<(StyleStructuralKind Kind, int N, string[] Payloads,
+            int[] Declarations, long Priority)> Rules)>? RuledRows(ReconcilerContext ctx, List<VisualElement?> rows,
+            int offset)
+        {
+            List<(VisualElement Element, int Index, List<(StyleStructuralKind Kind, int N, string[] Payloads,
+                int[] Declarations, long Priority)> Rules)>? ruled = null;
+            for (var slot = 0; slot < rows.Count; slot++)
             {
-                var slotOccupant = slotOccupants[slot]!;
+                var slotOccupant = rows[slot]!;
                 // A z-managed child's slot holds its PLACEHOLDER, not the element the rules were registered
                 // against (ApplyStructuralVariantConfig keys by the real element / its own wrapper) — resolve
                 // through the z-registry first, then the ordinary wrapper unwrap (the slot may ALSO hold a
                 // shadow / clip-path WRAPPER either way).
-                var inner = ResolveWrapped(
-                    _ctx.ZLayerPlaceholders.TryGetValue(slotOccupant, out var real) ? real : slotOccupant);
-                if (_ctx.StructuralVariants.TryGetValue(inner, out var rules))
+                var inner = WrapperInfrastructure.InnerOf(ctx,
+                    ctx.ZLayerPlaceholders.TryGetValue(slotOccupant, out var real) ? real : slotOccupant);
+                if (ctx.StructuralVariants.TryGetValue(inner, out var rules))
                 {
-                    (ruled ??= new()).Add((inner, slot, rules));
+                    (ruled ??= new()).Add((inner, offset + slot, rules));
                 }
             }
-            slotOccupants.Clear();
+            return ruled;
+        }
+
+        private static void EvaluateRuled(ReconcilerContext ctx, List<(VisualElement Element, int Index,
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations, long Priority)> Rules)>? ruled,
+            int count)
+        {
             if (ruled == null)
             {
                 return;
             }
             foreach (var (element, index, rules) in ruled)
             {
-                EvaluateStructural(_ctx, element, index, count, rules);
+                EvaluateStructural(ctx, element, index, count, rules);
             }
+        }
+
+        // A V.VirtualList row the renderer returned as a component or a Provider stands in an anchor, and CSS sees the
+        // elements it renders among the list's other rows, so each anchor's own rows take its place, which the anchor
+        // keeps for its own pass (ApplyStructuralVariantsInPlace).
+        private static List<VisualElement?> ExpandItemMountContainers(List<VisualElement?> rows,
+            List<VisualElement?> expanded)
+        {
+            if (!HoldsItemMountContainer(rows))
+            {
+                return rows;
+            }
+            foreach (var row in rows)
+            {
+                if (row!.userData is ItemMountPlace place)
+                {
+                    place.Offset = expanded.Count;
+                    ChildListWrites.Rows(row, 0, int.MaxValue, expanded);
+                    place.Count = expanded.Count - place.Offset;
+                }
+                else
+                {
+                    expanded.Add(row);
+                }
+            }
+            foreach (var row in rows)
+            {
+                if (row!.userData is ItemMountPlace place)
+                {
+                    place.Total = expanded.Count;
+                    place.Placement = ItemMountPlace.Placements;
+                }
+            }
+            return expanded;
+        }
+
+        private static bool HoldsItemMountContainer(List<VisualElement?> rows)
+        {
+            foreach (var row in rows)
+            {
+                if (row!.userData is ItemMountPlace)
+                {
+                    return true;
+                }
+            }
+            // MUTANT_SURVIVES(equivalent, literal): a list holding no anchor expands to a copy of itself.
+            return false;
         }
 
         // Configures the element's StyleChildVariantManipulator from the [&>*]:<utility> tokens in classNames

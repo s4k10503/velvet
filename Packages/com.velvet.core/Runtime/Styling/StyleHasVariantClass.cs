@@ -40,7 +40,7 @@ namespace Velvet
     /// need per-frame pointer-bounds hit-testing of the whole subtree, which is fragile, so
     /// <c>has-[:hover]:</c> simply does not parse. Items virtualized by <c>V.VirtualList</c> mount their rows on
     /// the controller's own path, so a has- element inside a virtualized row follows that path's timing rather
-    /// than the enclosing post-children pass, mirroring the structural variants' VirtualList exclusion. A has-
+    /// than the enclosing post-children pass. A has-
     /// payload that is itself a structural or has- variant has no gating owner and is dropped; a payload that is
     /// a plain state variant (<c>has-[:checked]:hover:…</c>) composes via the stacked-variant path, like the
     /// other manipulators.

@@ -144,13 +144,9 @@ namespace Velvet
         private VisualElement CreateForElementNode(ElementNode elementNode)
         {
             var element = _ctx.FiberElementFactory.Create(elementNode);
-            // Stamps the ComponentFiber whose Body is mid-render right now (the element's
-            // logical owner) onto the reserved userData slot — reset to null on pool reuse
-            // (FiberElementPoolReset.ResetCommonState) and otherwise never written by Velvet.
-            // This is the only reverse index from a native VisualElement back to the logical
-            // fiber tree; cross-panel synthetic event dispatch (V.Portal(layer:)/V.WorldSpace)
-            // walks it to climb ComponentFiber.Parent from wherever a pointer/focus event
-            // physically landed. Null at the true tree root (nothing on FiberStack yet).
+            // The ComponentFiber whose Body is mid-render right now, the element's logical owner, reset to null on pool
+            // reuse (FiberElementPoolReset.ResetCommonState). SharedRowContainers.AddCreators reads it to name the context
+            // whose walk reconciles the element's rows, and walks on past an element the application wrote over.
             element.userData = _ctx.FiberStack.Current;
             CaptureOwnRawText(element, elementNode.Props);
             // An element that declares no children has nothing to reconcile into it.
@@ -319,8 +315,7 @@ namespace Velvet
                 _ctx.PresenceAnchorMotionElement = element;
                 _ctx.PresenceAnchorCreated = true;
             }
-            // See CreateForElementNode's comment on this same assignment (reserved userData
-            // slot for cross-panel synthetic event dispatch's VE-to-logical-fiber reverse index).
+            // The same stamp as CreateForElementNode's.
             element.userData = _ctx.FiberStack.Current;
             // Only record applied-class bookkeeping when a variant actually merged; the variant-less
             // majority needs no entry (patch falls back to oldNode.ClassNames for the diff baseline).
@@ -850,7 +845,8 @@ namespace Velvet
             => new VisualElement
             {
                 pickingMode = PickingMode.Ignore,
-                style = { overflow = Overflow.Visible }
+                style = { overflow = Overflow.Visible },
+                userData = new ItemMountPlace(),
             };
 
         // Walks node and returns the first MotionNode descendant

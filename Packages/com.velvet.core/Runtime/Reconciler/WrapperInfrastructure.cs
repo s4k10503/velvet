@@ -20,8 +20,10 @@ namespace Velvet
             _ctx = ctx;
         }
 
-        internal VisualElement ResolveWrapped(VisualElement domElement)
-            => _ctx.WrapperToInnerMap.GetValueOrDefault(domElement, domElement);
+        internal VisualElement ResolveWrapped(VisualElement domElement) => InnerOf(_ctx, domElement);
+
+        internal static VisualElement InnerOf(ReconcilerContext ctx, VisualElement domElement)
+            => ctx.WrapperToInnerMap.GetValueOrDefault(domElement, domElement);
 
         // The inverse of ResolveWrapped: the element's current top-level DOM node — its
         // wrapper when it is the inner of one, else itself. Callers that hold a pre-patch element

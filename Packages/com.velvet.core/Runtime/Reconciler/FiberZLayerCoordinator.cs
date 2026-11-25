@@ -91,6 +91,22 @@ namespace Velvet
         internal static bool IsInternal(VisualElement child)
             => child != null && s_held.TryGetValue(child, out var held) && held.Role is Role.Anchor or Role.Dead;
 
+        // A has- element's post-children pass runs ahead of the end of its pass, so a :has() query reads the tree the
+        // pass leaves: not what IsInternal names, a retired element waiting for ReleaseRetiredZLayerReals among them,
+        // and, as unplaced, the relocated element a placeholder holds the slot of, before that element joins the parent
+        // where the pass drains (ResolveQueuedMount).
+        internal static bool IsReadByHas(VisualElement child, out VisualElement? unplaced)
+        {
+            unplaced = null;
+            if (!s_held.TryGetValue(child, out var held)) return true;
+            if (held.Role is Role.Anchor or Role.Dead) return false;
+            if (held.Role == Role.Slot && held.Partner is { } real && ChildListWrites.ParentOf(real) == null)
+            {
+                unplaced = real;
+            }
+            return true;
+        }
+
         // A relocated element sitting in the back band. LogicalChildSlots needs it apart from the other invisible
         // children, which an append must stop before rather than step over.
         internal static bool IsBackBandMember(VisualElement child)

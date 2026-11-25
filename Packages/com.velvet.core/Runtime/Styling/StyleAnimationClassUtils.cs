@@ -59,10 +59,11 @@ namespace Velvet
                     {
                         Add(also.Text, also.Clip, priority);
                         Add(dest, also.Clip, priority);
+                        changes.NoteCompanion(also.Clip);
                     }
                 }
             }
-            changes.Settle(ctx);
+            changes.Settle(ctx, classes);
         }
 
         // Ranks classes a play leaves on the element as the element's own from now on.
@@ -123,10 +124,11 @@ namespace Velvet
                         var keepClip = keep || ClipStays(dest, also.Text, kept);
                         Settle(also.Text, also.Clip, keepClip);
                         Settle(dest, also.Clip, keepClip);
+                        changes.NoteCompanion(also.Clip);
                     }
                 }
             }
-            changes.Settle(ctx);
+            changes.Settle(ctx, classes);
         }
 
         // The text-overflow utilities that imply the box's clip (StyleInputBoxSurface.ImpliesBoxClip). truncate is not
@@ -264,6 +266,7 @@ namespace Velvet
             private bool _controlGate;
             private bool _boxGate;
             private bool _clip;
+            private List<string>? _companions;
 
             public Changes(VisualElement control)
             {
@@ -272,7 +275,11 @@ namespace Velvet
                 _controlGate = false;
                 _boxGate = false;
                 _clip = false;
+                _companions = null;
             }
+
+            // A class the call wrote beside the ones it names: the clip a text-overflow utility implies.
+            public void NoteCompanion(string cls) => (_companions ??= new List<string>(1)).Add(cls);
 
             public void Note(VisualElement dest, bool gateChanged, string core)
             {
@@ -286,7 +293,7 @@ namespace Velvet
                 _boxGate |= gateChanged;
             }
 
-            public void Settle(ReconcilerContext? ctx)
+            public void Settle(ReconcilerContext? ctx, string[] written)
             {
                 Settle(_control, ctx, _controlGate);
                 if (_clip)
@@ -297,6 +304,11 @@ namespace Velvet
                 {
                     Settle(_box, ctx, _boxGate);
                 }
+                // A has- element above the element matches the classes a play writes, as :has(.foo) matches a class a
+                // script adds; the box is the element's descendant, so the walk up from the element covers it too. Rest
+                // is left out: a class a play put on counts for has-[.class]: whatever rank it holds
+                // (StyleClassProjection.SuppressesOwnClass).
+                FiberNodePatcher.RefreshHasVariantsForClasses(ctx, _control, written, _companions);
             }
 
             public void ReSync(ReconcilerContext? ctx)

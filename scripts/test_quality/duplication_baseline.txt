@@ -207,7 +207,7 @@ eca27f4b9678	Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridMan
 ee2a05a0ac79	Runtime/Reconciler/ChildReconciler.cs,Runtime/Styling/StyleFilterTransitionDriver.cs
 ef74861abed6	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 f0a87ee8b9fb	Runtime/Component/DndContextHost.cs,Runtime/Component/SortableHosts.cs
-f35f7b8ee04b	Runtime/Reconciler/FiberZLayerCoordinator.cs,Runtime/Styling/PointerEventsScope.cs
+f35f7b8ee04b	Runtime/Reconciler/FiberZLayerCoordinator.cs,Runtime/Reconciler/SharedRowContainers.cs,Runtime/Styling/PointerEventsScope.cs
 f38f7447e3ee	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 f48d56596fb3	Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
 f7415857392d	Runtime/Hooks/UseFrameDispatcher.cs,Runtime/Styling/OutlineHosting.cs,Runtime/Styling/RingOverlay.cs

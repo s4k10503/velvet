@@ -41,6 +41,9 @@ namespace Velvet
         // of its own.
         void BeginRowPlacementForController(VisualElement container);
 
+        // Called after it: no walk reconciles the container, so this is its post-children structural pass.
+        void EndRowPlacementForController(VisualElement container);
+
         // Bracket a range render: Begin before its first row is built, End once the buffers name the rows placed.
         // End can throw the suspend of a Portal child it mounts.
         bool BeginRangeForController();

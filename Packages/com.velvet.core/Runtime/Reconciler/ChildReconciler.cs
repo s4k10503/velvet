@@ -426,6 +426,7 @@ namespace Velvet
                 // be re-derived against the target's live physical structure, so a container appearing or
                 // disappearing between this mount and a later patch cannot move it.
                 var slotStart = LogicalChildSlots.Count(resolvedTarget);
+                SharedRowContainers.NotePlacer(_ctx, resolvedTarget);
                 // Restore the context that enclosed the Portal's tree position (captured at enqueue) so the
                 // children mount under their enclosing Providers / MotionContext rather than an empty cursor.
                 // The children's own reconcile pushes/pops on top of these and balances out, so popping the

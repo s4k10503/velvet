@@ -107,6 +107,9 @@ namespace Velvet
                 try
                 {
                     RenderAndReconcile(fiber);
+                    // As a flush refreshes its region (FiberWorkLoop.CommitFlushedFiber). Sub-work renders into what
+                    // encloses it, whose own end refreshes.
+                    if (opensWave) FiberWave.RefreshHasVariants(context, fiber.MountPoint);
                 }
                 finally
                 {
@@ -297,6 +300,7 @@ namespace Velvet
             // outlives every descendant in the tree, so a callback registered on it always fires.
             if (parentCtx == null)
             {
+                SharedRowContainers.NotePlacer(fiber.Reconciler.Context, mountPoint);
                 fiber.Reconciler.Context.BatchScheduler.SetAnchor(mountPoint);
                 if (onCaughtError != null) fiber.Reconciler.Context.OnCaughtError = onCaughtError;
                 if (onUncaughtError != null) fiber.Reconciler.Context.OnUncaughtError = onUncaughtError;
@@ -375,6 +379,9 @@ namespace Velvet
                     pass.UnmountingFiber = enclosingUnmount;
                     PopFiber(unmountPushedOnto);
                 }
+                // The other half of the mount's refresh (RenderMountedWork): the element a root was mounted into can sit
+                // under another root's has- element, which no walk of that root re-derives as these rows leave.
+                if (fiber.Parent == null) FiberNodePatcher.RestyleTreeAround(fiber.Reconciler!.Context, fiber.MountPoint);
             }
 
             FiberOutletScope.Release(fiber);

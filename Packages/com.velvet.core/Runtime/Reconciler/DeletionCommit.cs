@@ -146,7 +146,9 @@ namespace Velvet
                 // this one are still in the model, and the shifts for them have moved the ranges behind.
                 var portal = Ctx.PortalState.Stored[placeholder];
                 Ctx.PortalState.Remove(placeholder);
-                if (portal.SlotLength > 0 && Ctx.SharedReconcileDepth > 0) Ctx.PortalTargetsToRestyle.Add(detached.Target);
+                // MUTANT_SURVIVES(equivalent, boundary): a range of no rows leaves its target as it was, and
+                // re-deriving a tree no write changed leaves every match in it as it was.
+                if (portal.SlotLength > 0) FiberNodePatcher.RestyleTreeAround(Ctx, detached.Target);
                 Ctx.HostCommit.ShiftBehindPortalRange(detached.Target, placeholder, portal, -portal.SlotLength);
                 var owner = OwnerOfTheRemovedRowHolding(placeholder);
                 foreach (var row in detached.Rows)
