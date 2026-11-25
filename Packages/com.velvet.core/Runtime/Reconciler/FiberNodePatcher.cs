@@ -3456,10 +3456,11 @@ namespace Velvet
         }
 
         // A play's write of classes onto element (StyleAnimationClassUtils), with the companions it wrote beside them.
-        // Only a has-[.class]: rule naming one of those can change its match: the cascade's moves among the element's
-        // other classes leave each one's answer as it was (SubtreeCarriesClass), and no write of a class moves a row. So
-        // outside a pass only those rules on the chain above element are re-derived, at a lookup per context and ancestor
-        // and a subtree scan per rule named; inside one the element waits with the other seeds, as RestyleTreeAround's do.
+        // Only a has-[.class]: rule naming one of those can change its match, apart from a velvet- marker the write may
+        // add, which no application rule names: the cascade's moves among the element's other classes leave each one's
+        // answer as it was (SubtreeCarriesClass), and no write of a class moves a row. So outside a pass only those
+        // rules on the chain above element are re-derived, at a lookup per context and ancestor and a subtree scan per
+        // rule named; inside one the element waits with the other seeds, as RestyleTreeAround's do.
         internal static void RefreshHasVariantsForClasses(ReconcilerContext? ctx, VisualElement element, string[] classes,
             List<string>? companions)
         {
