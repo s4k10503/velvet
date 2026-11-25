@@ -24,6 +24,7 @@ namespace Velvet.Tests
         private static Func<string, VNode> s_row;
         private static VisualElement s_target;
         private static StateUpdater<int> s_render;
+        private static StateUpdater<int> s_renderRowA;
         private static StateUpdater<int> s_renderRowB;
         private static StateUpdater<bool> s_setGrown;
 
@@ -31,9 +32,9 @@ namespace Velvet.Tests
         public void SetUp()
         {
             _root = new VisualElement();
-            (s_items, s_row, s_target, s_render, s_renderRowB, s_setGrown) =
+            (s_items, s_row, s_target, s_render, s_renderRowA, s_renderRowB, s_setGrown) =
                 (new[] { "a", "b", "c" }, item => V.Div(name: item, className: "first:bg-mark"), null, default, default,
-                    default);
+                    default, default);
         }
 
         [Component(Compiler = false)]
@@ -41,7 +42,7 @@ namespace Velvet.Tests
         {
             var (_, setRender) = Hooks.UseState(0);
             if (item == "b") s_renderRowB = setRender;
-            return V.Div(name: item, className: "first:bg-mark even:bg-alt");
+            return V.Div(name: item, className: "first:bg-mark even:bg-alt nth-2:bg-second");
         }
 
         // Two elements, keyed by how often it rendered, so each render replaces both.
@@ -49,10 +50,10 @@ namespace Velvet.Tests
         private static VNode PairRow(string item)
         {
             var (renders, setRenders) = Hooks.UseState(0);
-            if (item == "b") s_renderRowB = setRenders;
+            if (item == "a") s_renderRowA = setRenders;
             return V.Fragment(
-                V.Div(key: $"{item}-{renders}", name: item, className: "last:bg-end"),
-                V.Div(key: $"{item}-more-{renders}", name: item + "-more", className: "last:bg-end"));
+                V.Div(key: $"{item}-{renders}", name: item, className: "nth-last-3:bg-end"),
+                V.Div(key: $"{item}-more-{renders}", name: item + "-more", className: "nth-last-3:bg-end"));
         }
 
         // One element, or two once s_setGrown says so.
@@ -147,7 +148,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ComponentRowsCarryingFirst_When_AScrollMakesOneTheFirstOfTheRange_Then_ItMatches()
+        public void Given_ComponentRowsCarryingNth2_When_AScrollPlacesTheRangeAgain_Then_TheNewSecondMatchesNth2()
         {
             // Arrange — the first range, rendered outside any pass, holds "a" and "b".
             s_row = item => V.Component(ComponentRow, item, key: item);
@@ -159,23 +160,23 @@ namespace Velvet.Tests
             controller.UpdateVisibleRange(scrollY: 10f, viewportHeight: 15f);
 
             // Assert
-            Assert.That(_root.Q<VisualElement>("b").ClassListContains("bg-mark"), Is.True);
+            Assert.That(_root.Q<VisualElement>("c").ClassListContains("bg-second"), Is.True);
         }
 
         [Test]
-        public void Given_TwoComponentRowsRenderingTwoElementsEach_When_TheLastRendersBothAnew_Then_ItsSecondMatchesLast()
+        public void Given_TwoComponentRowsRenderingTwoElementsEach_When_TheFirstRendersBothAnew_Then_ItsSecondMatchesNthLast3()
         {
             // Arrange — a range of "a" and "b", outside any pass.
             s_row = item => V.Component(PairRow, item, key: item);
             using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
             Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 15f);
 
-            // Act — "b"'s own component renders again, replacing both of its elements in the anchor it stands in.
-            s_renderRowB.Invoke(previous => previous + 1);
+            // Act — "a"'s own component renders again, replacing both of its elements in the anchor it stands in.
+            s_renderRowA.Invoke(previous => previous + 1);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(_root.Q<VisualElement>("b-more").ClassListContains("bg-end"), Is.True);
+            Assert.That(_root.Q<VisualElement>("a-more").ClassListContains("bg-end"), Is.True);
         }
 
         [Test]

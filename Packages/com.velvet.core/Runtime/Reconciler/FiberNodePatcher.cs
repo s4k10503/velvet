@@ -3875,8 +3875,8 @@ namespace Velvet
             }
         }
 
-        // False where no pass over the list has placed the anchor yet, or it now holds a different number of rows than
-        // that pass found, which moves every row behind it.
+        // False where no pass over the list has placed the anchor since the latest range placement, or it now holds a
+        // different number of rows than that pass found, which moves every row behind it.
         private bool ApplyStructuralVariantsInPlace(VisualElement anchor, ItemMountPlace place)
         {
             // MUTANT_SURVIVES(equivalent, line removed): this buffer is empty here, as ApplyStructuralVariantsOf and a
@@ -3884,7 +3884,7 @@ namespace Velvet
             // empties it first.
             _structuralRows.Clear();
             ChildListWrites.Rows(anchor, 0, int.MaxValue, _structuralRows);
-            if (place.Offset < 0 || _structuralRows.Count != place.Count)
+            if (place.Placement != ItemMountPlace.Placements || place.Offset < 0 || _structuralRows.Count != place.Count)
             {
                 return false;
             }
@@ -3983,6 +3983,7 @@ namespace Velvet
                 if (row!.userData is ItemMountPlace place)
                 {
                     place.Total = expanded.Count;
+                    place.Placement = ItemMountPlace.Placements;
                 }
             }
             return expanded;

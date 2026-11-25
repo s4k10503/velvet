@@ -5,9 +5,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies what a <see cref="V.VirtualList{T}"/> component row's own render costs the list's structural variants:
-    /// where the row renders as many elements as before, they are matched where the list's last pass placed them, and
-    /// no pass over the list runs again to place its other rows, whichever row renders.
+    /// Specifies that a <see cref="V.VirtualList{T}"/> component row's own render that leaves it as many elements as before
+    /// runs no pass over the list, whichever row renders: the place such a pass would write on another row's anchor stays
+    /// as the case set it.
     /// </summary>
     [TestFixture]
     internal sealed class VirtualListComponentRowPlaceTests

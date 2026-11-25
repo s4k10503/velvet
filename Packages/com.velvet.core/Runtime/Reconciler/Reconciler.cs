@@ -760,7 +760,10 @@ namespace Velvet
             => FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, container);
 
         void IReconcilerBridge.EndRowPlacementForController(VisualElement container)
-            => NodePatcher.ApplyStructuralVariants(container);
+        {
+            ItemMountPlace.Placements++;
+            NodePatcher.ApplyStructuralVariants(container);
+        }
 
         // The structural half of FiberNodePatcher.RestyleTreeAround, which holds no patcher of its own.
         internal void ApplyStructuralVariantsOf(VisualElement element) => NodePatcher.ApplyStructuralVariants(element);

@@ -8,10 +8,11 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies structural variants over an element that holds the rows of two roots: one root's element that another
     /// root's Portal mounts into, and one another root is mounted into, a ScrollView among them, whose rows sit in a
-    /// content element of its own, and elements whose userData the application wrote over, one of them the top element
-    /// of a root mounted into a third root's element. A change one root makes to the element's rows re-derives the
-    /// rows of the other, whose rules it did not register, as CSS's structural pseudo-classes read the whole child list
-    /// whatever placed it. The rules are <c>only:</c>, which holds wherever the other root's rows land.
+    /// content element of its own, one that holds no row of its own root when the other's arrive, and elements whose
+    /// userData the application wrote over, one of them the top element of a root mounted into a third root's element.
+    /// A change one root makes to the element's rows re-derives the rows of the other, whose rules it did not register,
+    /// as CSS's structural pseudo-classes read the whole child list whatever placed it. The rules are <c>only:</c>, which
+    /// holds wherever the other root's rows land.
     /// </summary>
     [TestFixture]
     internal sealed class CrossRootStructuralVariantTests
@@ -46,6 +47,23 @@ namespace Velvet.Tests
         private static VNode SwitchableScrollView()
         {
             var (shown, setShown) = Hooks.UseState(true);
+            s_setShown = setShown;
+            return V.ScrollView(name: "target",
+                children: shown ? new VNode[] { V.Div(name: "own") } : Array.Empty<VNode>());
+        }
+
+        [Component(Compiler = false)]
+        private static VNode TargetFilledLater()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_setShown = setShown;
+            return V.Div(name: "target", children: shown ? new VNode[] { V.Div(name: "own") } : Array.Empty<VNode>());
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ScrollViewFilledLater()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
             s_setShown = setShown;
             return V.ScrollView(name: "target",
                 children: shown ? new VNode[] { V.Div(name: "own") } : Array.Empty<VNode>());
@@ -126,6 +144,46 @@ namespace Velvet.Tests
 
             // Assert — null where "own" did not match only: before the other root's row joined it.
             Assert.That(onlyBeforeTheMount ? Own.ClassListContains("bg-mark") : (bool?)null, Is.False);
+        }
+
+        [Test]
+        public void Given_AnotherRootsPortalRowAloneInAnElementOfOneRoot_When_ThatRootRendersAChildIntoIt_Then_TheRowStopsMatchingOnly()
+        {
+            // Arrange — "target" holds no row of its own root when the Portal mounts.
+            using var targetTree = V.Mount(_targetRoot, V.Component(TargetFilledLater, key: "target"));
+            using var portalling = V.Mount(_otherRoot, V.Div(children: new VNode[]
+            {
+                V.Portal(Target, new VNode[] { V.Div(name: "portalled", className: "only:bg-mark") }),
+            }));
+            var portalled = _targetRoot.Q<VisualElement>("portalled");
+            var onlyBeforeTheChild = portalled.ClassListContains("bg-mark");
+
+            // Act — a render of the target's own root, which registered none of the row's rules.
+            s_setShown.Invoke(true);
+            targetTree.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — null where the row did not match only: while it stood alone.
+            Assert.That(onlyBeforeTheChild ? portalled.ClassListContains("bg-mark") : (bool?)null, Is.False);
+        }
+
+        [Test]
+        public void Given_AnotherRootsPortalRowAloneInAScrollViewOfOneRoot_When_ThatRootRendersAChildIntoIt_Then_TheRowStopsMatchingOnly()
+        {
+            // Arrange — the ScrollView's content holds no row of its own root when the Portal mounts.
+            using var targetTree = V.Mount(_targetRoot, V.Component(ScrollViewFilledLater, key: "target"));
+            using var portalling = V.Mount(_otherRoot, V.Div(children: new VNode[]
+            {
+                V.Portal(Target, new VNode[] { V.Div(name: "portalled", className: "only:bg-mark") }),
+            }));
+            var portalled = _targetRoot.Q<VisualElement>("portalled");
+            var onlyBeforeTheChild = portalled.ClassListContains("bg-mark");
+
+            // Act — a render of the ScrollView's own root, which registered none of the row's rules.
+            s_setShown.Invoke(true);
+            targetTree.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — null where the row did not match only: while it stood alone.
+            Assert.That(onlyBeforeTheChild ? portalled.ClassListContains("bg-mark") : (bool?)null, Is.False);
         }
 
         [Test]

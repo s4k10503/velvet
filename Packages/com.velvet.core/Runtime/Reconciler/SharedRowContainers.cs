@@ -1,4 +1,5 @@
 #nullable enable
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
@@ -41,31 +42,38 @@ namespace Velvet
         internal static bool TryGetPlacers(VisualElement container, out WeakContextList placers)
             => s_placers.TryGetValue(ChildListWrites.ContentOf(container), out placers!);
 
-        // The contexts whose walk may reconcile content's rows, going up from content as far as the first element holding
-        // the fiber FiberNodeFactory leaves on what it creates (VisualElement.userData): that fiber's context, and at each
-        // element on the way the contexts a Portal or a root places rows into it for. An element whose userData the
-        // application wrote a value of its own over holds no fiber, and the walk goes past it. A context taken that
-        // reconciles no row of content costs its passes a lookup and holds no rule for those rows.
+        // The contexts whose walk may reconcile content's rows. Content's owner, content itself or the element whose
+        // content container it is (ChildListWrites.ContentOf), names its creator by the fiber FiberNodeFactory leaves on
+        // what it creates (VisualElement.userData), the first one at or above content. Where the owner holds none, as
+        // where the application wrote a value of its own over it, the contexts are the ones whose fibers content's rows
+        // hold; the contexts placing rows into the elements above content are not taken.
         private static void AddCreators(WeakContextList placers, VisualElement content)
         {
-            for (var element = content; element != null; element = ChildListWrites.ParentOf(element))
+            var stamped = FirstStamped(content);
+            if (stamped?.userData is ComponentFiber { Reconciler: { } creator }
+                && ReferenceEquals(ChildListWrites.ContentOf(stamped), content))
             {
-                if (s_placers.TryGetValue(element, out var placing))
-                {
-                    for (var i = 0; i < placing.Count; i++)
-                    {
-                        if (placing.TryGet(i, out var placer))
-                        {
-                            placers.Add(placer);
-                        }
-                    }
-                }
-                if (element.userData is ComponentFiber { Reconciler: { } reconciler })
+                placers.Add(creator.Context);
+                return;
+            }
+            var rows = new List<VisualElement?>();
+            ChildListWrites.Rows(content, 0, int.MaxValue, rows);
+            foreach (var row in rows)
+            {
+                if (row?.userData is ComponentFiber { Reconciler: { } reconciler })
                 {
                     placers.Add(reconciler.Context);
-                    return;
                 }
             }
+        }
+
+        private static VisualElement? FirstStamped(VisualElement? element)
+        {
+            for (; element != null; element = ChildListWrites.ParentOf(element))
+            {
+                if (element.userData is ComponentFiber) return element;
+            }
+            return null;
         }
     }
 }

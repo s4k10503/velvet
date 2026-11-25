@@ -23,12 +23,6 @@ namespace Velvet.Tests
             ["visible"] = "on opacity-100",
         };
 
-        private static readonly Dictionary<string, MotionVariant> s_ellipsisPoses = new()
-        {
-            ["hidden"] = "opacity-0",
-            ["visible"] = "text-ellipsis opacity-100",
-        };
-
         private static readonly Dictionary<string, MotionVariant> s_ellipsisFirstPoses = new()
         {
             ["clipped"] = "text-ellipsis opacity-0",
@@ -58,20 +52,22 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AHasClassElementNamingTheBoxClipAboveAMotionTextField_When_ItsMountEnterWritesATextOverflowUtility_Then_ItMatches()
+        public void Given_AHasClassElementNamingTheBoxClipAboveAMotionTextField_When_ItsMountEnterSwapsInATextOverflowUtility_Then_ItMatches()
         {
-            // Arrange — the enter starts from "hidden".
+            // Arrange — a classic enter, whose swap writes its to-class and whose end takes it away.
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[]
             {
                 V.Div(name: "parent", className: "has-[.overflow-hidden]:bg-mark", children: new VNode[]
                 {
-                    V.Motion(name: "m", elementType: typeof(TextField), variants: s_ellipsisPoses, initial: "hidden",
-                        animate: "visible", transition: new StyleTransitionConfig { DurationSec = DurationSec }),
+                    V.Motion(name: "m", elementType: typeof(TextField), transition: new StyleTransitionConfig
+                    {
+                        DurationSec = DurationSec, EnterFromClass = "opacity-0", EnterToClass = "text-ellipsis",
+                    }),
                 }),
             });
 
-            // Act
-            AdvancePast(DurationSec);
+            // Act — frames past the swap and short of the enter's end, which takes the to-class away.
+            for (var frame = 0; frame < 4; frame++) Tick();
 
             // Assert — null where the play put no clip on the box.
             Assert.That(Root.Q<VisualElement>("m").Q<VisualElement>(className: StyleChildVariantClass.InputBoxClass)
