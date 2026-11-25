@@ -43,7 +43,7 @@ namespace Velvet.Tests
             var context = mounted.Root.Reconciler!.Context;
             row = container[0];
             var deletion = DeletionCommit.Begin(context, new FiberElementCleaner(context), container, slotStart: 0, occupants: null);
-            deletion.AddRemovedRow(0, row);
+            deletion.AddRemovedRow(0, row, owner: null);
             return deletion;
         }
 

@@ -1,20 +1,25 @@
 using System;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins where an error goes that is thrown as a boundary's swap to its fallback takes down the children it showed —
-    /// the panel-detach callback of an element the boundary rendered, a <c>z-*</c> one's included, or the cleanup of such
-    /// an element's <c>refCallback:</c>: to that boundary, which reports it after the error it caught, as React captures
-    /// what a deletion throws from the nearest mounted ancestor of the deleted child. The detach callback's is pinned
-    /// where the swap follows a render error the boundary's own render caught, one a child's own render threw, an error a
-    /// commit captured for the boundary, and a <c>UseFrame</c> callback's error, and where, with no boundary above, the
-    /// root renders nothing for a child's render error and reports both as uncaught; the <c>z-*</c> element's and the ref
-    /// cleanup's where the swap follows the first. A removal a later drain makes under another boundary still goes to
-    /// that one.
+    /// Pins where an error goes that removing an element throws — its panel-detach callback's, a <c>z-*</c> or a
+    /// <c>V.WorldSpace</c> element's included, or its <c>refCallback:</c> cleanup's: to the nearest boundary at or above
+    /// the component whose output held the element, passing over the components the same removal takes down, whether
+    /// or not that boundary has caught, as React captures what a deletion throws from the nearest mounted ancestor of the
+    /// deleted child. So a boundary's swap to its fallback leaves what taking its children down throws to that boundary,
+    /// which reports it after the error it caught: where the swap follows a render error the boundary's own render
+    /// caught, one a child's own render threw, one its parent's walk caught, an error a commit captured for the boundary,
+    /// that capture taken in its parent's walk, and a <c>UseFrame</c> callback's error, and where, with no boundary above,
+    /// the root renders nothing for a child's render error and reports both as uncaught; the <c>z-*</c> and ref cleanup
+    /// cases follow the boundary's own render, and the <c>V.WorldSpace</c> case its parent's walk. A boundary between the component whose
+    /// update removed the element and the one that rendered it takes the error, from the flat path and the general walk
+    /// alike, and so does a boundary taking down its own fallback. A removal a later drain makes under another boundary
+    /// still goes to that one.
     /// </summary>
     /// <remarks>
     /// The tree mounts on a real panel, which is what runs a detach callback.
@@ -24,6 +29,8 @@ namespace Velvet.Tests
     {
         private HeadlessEditorPanelHost _host;
         private VisualElement _mountPoint;
+        private static bool s_armed;
+        private static bool s_firstDetachThrown;
 
         [SetUp]
         public void SetUp()
@@ -31,17 +38,22 @@ namespace Velvet.Tests
             _host = new HeadlessEditorPanelHost();
             _mountPoint = new VisualElement();
             _host.Root.Add(_mountPoint);
+            s_armed = true;
+            s_firstDetachThrown = false;
         }
 
+        // Disarms the throwers first: where a case leaves one on a panel, as a failing case can, the host's closing below
+        // detaches it, and a throw there would fail the case for something it does not assert.
         [TearDown]
         public void TearDown()
         {
+            s_armed = false;
             _host?.Dispose();
             _host = null;
         }
 
-        // Stands in for a V.Custom<T> whose element registers a panel-detach callback that throws. Its message says
-        // whether the element attached as a relocated z-* element, so the z-* case fails where the arrangement stops
+        // Stands in for a V.Custom<T> whose element registers a panel-detach callback that throws while armed. Its message
+        // says whether the element attached as a relocated z-* element, so the z-* case fails where the arrangement stops
         // making one.
         internal sealed class DetachThrower : VisualElement
         {
@@ -52,7 +64,24 @@ namespace Velvet.Tests
                 RegisterCallback<AttachToPanelEvent>(_ =>
                     _arranged = FiberZLayerCoordinator.IsRelocatedReal(this) ? ":z" : "");
                 RegisterCallback<DetachFromPanelEvent>(_ =>
-                    throw new InvalidOperationException("detach:" + name + _arranged));
+                {
+                    if (s_armed) throw new InvalidOperationException("detach:" + name + _arranged);
+                });
+            }
+        }
+
+        // As DetachThrower, throwing from the first detach in a case alone, whichever instance has it, so a fallback the
+        // boundary mounts again after taking that error does not throw it again.
+        internal sealed class FirstDetachThrower : VisualElement
+        {
+            public FirstDetachThrower()
+            {
+                RegisterCallback<DetachFromPanelEvent>(_ =>
+                {
+                    if (!s_armed || s_firstDetachThrown) return;
+                    s_firstDetachThrown = true;
+                    throw new InvalidOperationException("detach:" + name);
+                });
             }
         }
 
@@ -293,11 +322,14 @@ namespace Velvet.Tests
             return V.Fragment(V.Div(key: "row"), V.Component(ThrowsInRenderWhen, throws, key: "child"));
         }
 
+        // Its element's children are elements alone, which takes the flat path, whose removal names no owner.
         [Component]
         private static VNode RemovesADetachThrower()
         {
             var (kept, _) = EventLog.UseState("Kept", true);
-            return V.Div(children: new VNode[] { kept ? V.Custom<DetachThrower>(name: "U", key: "thrower") : null });
+            return V.Div(children: kept
+                ? new VNode[] { V.Custom<DetachThrower>(name: "U", key: "thrower") }
+                : Array.Empty<VNode>());
         }
 
         [Component(IsErrorBoundary = true, DisplayName = "C")]
@@ -311,9 +343,9 @@ namespace Velvet.Tests
         private static VNode SwapperBesideARemover()
             => V.Fragment(V.Component(CatchesOverAQuietRow, key: "b"), V.Component(HoldsARemover, key: "c"));
 
-        // GREEN_ON_BASE(characterization): the base keeps no takedown mark for a later removal to read.
-        // Leaving ReconcilePass.TakingDownRowsOf set past FiberErrorBoundary.UnmountShownRows, or past
-        // DeletionCommit.Teardown, hands the later removal's error to the boundary that swapped, and reddens it.
+        // GREEN_ON_BASE(characterization): the base names no removal owner for a later removal to read.
+        // Leaving ReconcilePass.RemovalOwner set where ChildListWrites.RemovalOwnerScope closes hands the later removal's
+        // error to the boundary that swapped, and reddens it.
         [Test]
         public void Given_ABoundaryThatHasSwappedItsFallbackIn_When_ALaterDrainRemovesAnElementThatThrowsAsItDetachesUnderAnotherBoundary_Then_TheOtherBoundaryReportsIt()
         {
@@ -330,6 +362,225 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("caught:C:detach:U"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode CatchesOverADetachThrowerFor(bool throws)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(
+                V.Custom<DetachThrower>(name: "T", key: "thrower"),
+                V.Component(ThrowsInRenderWhen, throws, key: "child"));
+        }
+
+        // Its update renders the boundary inside its own walk, which catches the child's render error there.
+        [Component]
+        private static VNode RendersTheBoundaryInItsWalk()
+        {
+            var (throws, _) = EventLog.UseState("Throws", false);
+            return V.Component(CatchesOverADetachThrowerFor, throws, key: "b");
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseParentsWalkCatchesAChildsRenderError_When_ItsSwapRemovesAnElementThatThrowsAsItDetaches_Then_TheBoundaryReportsBothErrors()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(RendersTheBoundaryInItsWalk, key: "parent"));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Throws").Invoke(true);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:B:render:Child caught:B:detach:T"));
+        }
+
+        // As its error is captured it asks the parent for a render, which the drain that renders the boundary for that
+        // error renders as well.
+        [Component(Compiler = false)]
+        private static VNode ThrowsInALayoutEffectAskingItsParentToRender()
+        {
+            var (throws, _) = EventLog.UseState("Throws", false);
+            var log = EventLog.UseLog();
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (!throws) return (Action)null;
+                log.Setter<int>("Tick").Invoke(1);
+                throw new InvalidOperationException("layout:Child");
+            }, new object[] { throws });
+            return V.Div();
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode CapturesOverADetachThrowerFor(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(
+                V.Custom<DetachThrower>(name: "T", key: "thrower"),
+                V.Component(ThrowsInALayoutEffectAskingItsParentToRender, key: "child"));
+        }
+
+        [Component]
+        private static VNode RendersTheCapturingBoundaryInItsWalk()
+        {
+            var (tick, _) = EventLog.UseState("Tick", 0);
+            return V.Component(CapturesOverADetachThrowerFor, tick, key: "b");
+        }
+
+        [Test]
+        public void Given_ABoundaryOverAChildWhoseLayoutEffectThrowsAndAsksTheParentToRender_When_TheSwapForTheCapturedErrorRemovesAnElementThatThrowsAsItDetaches_Then_TheBoundaryReportsBothErrors()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(RendersTheCapturingBoundaryInItsWalk, key: "parent"));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Throws").Invoke(true);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:B:layout:Child caught:B:detach:T"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "C")]
+        private static VNode KeepsAnElementListWhile(bool shown)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-c"));
+            return V.Div(children: shown
+                ? new VNode[] { V.Custom<DetachThrower>(name: "U", key: "thrower") }
+                : Array.Empty<VNode>());
+        }
+
+        [Component]
+        private static VNode DropsAnElementListThroughABoundary()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Component(KeepsAnElementListWhile, shown, key: "c");
+        }
+
+        [Test]
+        public void Given_ABoundaryBetweenTheUpdatedComponentAndAnElementListItRenders_When_TheUpdateRemovesAnElementThatThrowsAsItDetaches_Then_TheBoundaryReportsIt()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(DropsAnElementListThroughABoundary, key: "parent"));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:C:detach:U"));
+        }
+
+        // The child that can be null takes the general walk, which names each removed row's owner itself.
+        [Component(IsErrorBoundary = true, DisplayName = "C")]
+        private static VNode KeepsAnElementBesideNothingWhile(bool shown)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback-c"));
+            return V.Div(children: new VNode[] { shown ? V.Custom<DetachThrower>(name: "U", key: "thrower") : null });
+        }
+
+        [Component]
+        private static VNode DropsAnElementThroughABoundary()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Component(KeepsAnElementBesideNothingWhile, shown, key: "c");
+        }
+
+        [Test]
+        public void Given_ABoundaryBetweenTheUpdatedComponentAndAnElementItRendersInTheGeneralWalk_When_TheUpdateRemovesAnElementThatThrowsAsItDetaches_Then_TheBoundaryReportsIt()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(DropsAnElementThroughABoundary, key: "parent"));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:C:detach:U"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ThrowsInALayoutEffectWhenProbed()
+        {
+            var (probed, _) = EventLog.UseState("Probe", false);
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (probed) throw new InvalidOperationException("layout:Probe");
+                return (Action)null;
+            }, new object[] { probed });
+            return V.Div();
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode FallsBackToADetachThrowerBesideAProbe()
+        {
+            var (throws, _) = EventLog.UseState("Throws", false);
+            Hooks.UseFallback(_ => V.Fragment(
+                V.Custom<FirstDetachThrower>(name: "F", key: "thrower"),
+                V.Component(ThrowsInALayoutEffectWhenProbed, key: "probe")));
+            return V.Component(ThrowsInRenderWhen, throws, key: "child");
+        }
+
+        [Test]
+        public void Given_ABoundaryShowingAFallbackWhoseLayoutEffectThrows_When_TheSwapForThatErrorRemovesAFallbackElementThatThrowsAsItDetaches_Then_TheBoundaryReportsBothErrors()
+        {
+            // Arrange — the boundary shows its fallback for the child's render error
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(FallsBackToADetachThrowerBesideAProbe, key: "b"));
+            log.Setter<bool>("Throws").Invoke(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Probe").Invoke(true);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:B:layout:Probe caught:B:detach:F"));
+        }
+
+        [Component(IsErrorBoundary = true, DisplayName = "B")]
+        private static VNode CatchesOverAWorldSpaceHoldingADetachThrowerFor(bool throws)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(
+                V.WorldSpace(Vector3.zero, key: "ws",
+                    children: new VNode[] { V.Custom<DetachThrower>(name: "X", key: "x") }),
+                V.Component(ThrowsInRenderWhen, throws, key: "child"));
+        }
+
+        // Its walk catches for the boundary, so the V.WorldSpace's rows leave in this component's removal pass, where this
+        // component is the one on the stack.
+        [Component]
+        private static VNode RendersTheWorldSpaceBoundaryInItsWalk()
+        {
+            var (throws, _) = EventLog.UseState("Throws", false);
+            return V.Component(CatchesOverAWorldSpaceHoldingADetachThrowerFor, throws, key: "b");
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseParentsWalkCatchesAChildsRenderError_When_ItsSwapRemovesAWorldSpaceWhoseElementThrowsAsItDetaches_Then_TheBoundaryReportsBothErrors()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(RendersTheWorldSpaceBoundaryInItsWalk, key: "parent"));
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Throws").Invoke(true);
+            RecordingWhatItThrows(mounted.GetSchedulerForTest().DrainImmediateForTest, log.Add);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("caught:B:render:Child caught:B:detach:X"));
         }
     }
 }

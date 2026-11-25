@@ -652,7 +652,7 @@ namespace Velvet
             for (var i = 0; !_ctx.IsAborted && i < oldLength; i++)
             {
                 var row = commit.OldOccupants.Occupant(i);
-                if (row != null && !commit.UsedOldIndices.Contains(i)) whole.AddRemovedRow(i, row);
+                if (row != null && !commit.UsedOldIndices.Contains(i)) whole.AddRemovedRow(i, row, commit.OldOwners[i]);
             }
             whole.Collect(oldFibers, newFibers);
             var deferred = ChildListWrites.IsRecording && whole.CanDefer();
@@ -696,7 +696,7 @@ namespace Velvet
                     var row = commit.OldOccupants.Occupant(i);
                     if (row == null || commit.UsedOldIndices.Contains(i)) continue;
                     var anchor = AnchorOf(commit, commit.OldOwners[i], commit.OldTurns[i], newFibers, containersOwner);
-                    GroupAt(commit, byTurn, anchor, ref head, ref tail).AddRemovedRow(i, row);
+                    GroupAt(commit, byTurn, anchor, ref head, ref tail).AddRemovedRow(i, row, commit.OldOwners[i]);
                 }
                 foreach (var fiber in oldFibers)
                 {
@@ -792,8 +792,8 @@ namespace Velvet
                 {
                     var old = commit.OldOccupants.Occupant(removed[i].Index);
                     if (old == null) continue;
-                    if (deferred) deletion.AddCleanup(parent, old);
-                    else _ctx.HostCommit.Remove(parent, old, deletion.Plan);
+                    if (deferred) deletion.AddCleanup(parent, old, _ctx.HostCommit.OwnerOfARemoval(removed[i].Owner));
+                    else _ctx.HostCommit.Remove(parent, old, deletion.Plan, removed[i].Owner);
                 }
             }
             // The teardowns are queued ahead of the removals, which they clean up before they apply, as a cleanup runs ahead
@@ -801,7 +801,7 @@ namespace Velvet
             for (var deletion = deletions; deletion != null; deletion = deletion.NextGroup)
             {
                 deletion.Queue();
-                foreach (var (_, element, _, _) in deletion.Cleanups) _ctx.HostCommit.RemoveRow(parent, element);
+                foreach (var (_, element, _, _, owner) in deletion.Cleanups) _ctx.HostCommit.RemoveRow(parent, element, owner);
             }
             // LIS reorder over the post-removal DOM positions, from slotStart for the reason above.
             var range = new ChildElementPlacement.PlacementRange

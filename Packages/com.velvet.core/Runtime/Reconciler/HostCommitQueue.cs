@@ -35,19 +35,36 @@ namespace Velvet
         }
 
         // Takes element out of parent with everything it holds released (FiberElementCleaner). Nothing is done
-        // where element is no longer parent's child.
-        internal void Remove(VisualElement parent, VisualElement element, DeletionPlan? plan = null)
+        // where element is no longer parent's child. owner is the component whose output held element (OwnerOfARemoval).
+        internal void Remove(VisualElement parent, VisualElement element, DeletionPlan? plan = null,
+            ComponentFiber? owner = null)
         {
             var at = ChildListWrites.PhysicalIndexOf(parent, element);
-            if (at >= 0) _cleaner.RemoveElement(parent, at, plan);
+            if (at < 0) return;
+            using var removing = new ChildListWrites.RemovalOwnerScope(_ctx.Pass, OwnerOfARemoval(owner));
+            _cleaner.RemoveElement(parent, at, plan);
         }
 
         // The child-list write of a row FiberElementCleaner has taken down. The element's return to its pool waits for
         // the end of the pass as well (FiberElementCleaner.ReleasePendingPoolReturns).
-        internal void RemoveRow(VisualElement parent, VisualElement element)
+        internal void RemoveRow(VisualElement parent, VisualElement element, ComponentFiber? owner = null)
         {
             using var queued = ChildListWrites.QueueWrite();
+            using var removing = new ChildListWrites.RemovalOwnerScope(_ctx.Pass, OwnerOfARemoval(owner));
             ChildListWrites.RemoveRow(parent, element);
+        }
+
+        // The owner a caller names, else the one an enclosing removal names, else the component whose walk is on the
+        // stack, which the flat path's rows all belong to (ChildReconciler names none). A fiber whose own unmount removes
+        // its rows (ReconcilePass.UnmountingFiber) goes with them, so its parent stands for it, read here while the fiber
+        // still names it; the root MountedTree.Dispose unmounts stands for itself, and holds what is thrown for once the
+        // unmount is done (CommitErrors.Capture).
+        internal ComponentFiber? OwnerOfARemoval(ComponentFiber? owner)
+        {
+            var pass = _ctx.Pass;
+            var named = owner ?? pass.RemovalOwner ?? _ctx.FiberStack.Current;
+            var unmounting = pass.UnmountingFiber;
+            return unmounting is { IsMountRoot: false } && ReferenceEquals(named, unmounting) ? unmounting.Parent : named;
         }
 
         // Re-places the non-LIS elements so the slot range [slotStart, slotStart + count) ends up in
