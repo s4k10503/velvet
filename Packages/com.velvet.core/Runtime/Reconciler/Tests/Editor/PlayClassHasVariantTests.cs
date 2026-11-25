@@ -38,7 +38,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AHasClassElementAboveAMotion_When_ItsMountEnterWritesThePoseCarryingTheClass_Then_ItMatches()
         {
-            // Arrange — the enter starts from "hidden", so the render leaves "on" off the Motion.
+            // Arrange — the enter starts from "hidden".
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[]
             {
                 V.Div(name: "parent", className: "has-[.on]:bg-mark", children: new VNode[]
