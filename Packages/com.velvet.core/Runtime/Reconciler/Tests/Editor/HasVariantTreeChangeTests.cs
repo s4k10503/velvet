@@ -7,11 +7,11 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies a <c>has-[…]:</c> element against changes to its subtree that its own post-children pass does not
-    /// see: a relocated (<c>z-*</c>) descendant, which joins its parent only once its pass ends, and whose element
-    /// a removal retires until then; a Portal's children leaving the target the element holds, each time they leave;
-    /// and a Portal from another root, which registered none of the element's rules, as does the sweep of a root that
-    /// knows no region. Each holds once the change has rendered, as <c>:has()</c> matches the tree as it stands after
-    /// any change.
+    /// see: a relocated (<c>z-*</c>) descendant, which joins its parent only once its pass ends, and which a removal
+    /// retires until then; a Portal's children leaving the target the element holds, each time they leave; and a Portal
+    /// from another root, which registered none of the element's rules. Each holds once the change has rendered, as
+    /// <c>:has()</c> matches the tree as it stands after any change, and a sweep of another root that knows no region
+    /// re-derives the element too.
     /// </summary>
     [TestFixture]
     internal sealed class HasVariantTreeChangeTests
