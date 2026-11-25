@@ -142,7 +142,7 @@ namespace Velvet
             var logicalIndex = slot.SlotStart + slot.Index;
             if (slotExists && ReconcileKeying.CanPatch(oldNode, newNode))
             {
-                _patchWalk.PatchNode(occupants.Resolved(slot.Index)!, oldNode, newNode);
+                _patchWalk.PatchNode(occupants.Resolved(slot.Index)!, oldNode, newNode, CapturesOnly(oldNode, newNode));
                 return false;
             }
 
@@ -1022,8 +1022,15 @@ namespace Velvet
         // (DetachedHost.Capture) is taken only where a walk reaches it.
         private bool SkipsIdentical(VNode? node)
             => !FiberPendingWork.MayHoldFiber(node)
-                || _ctx.FiberStack.Current is not { PendingWorkBelow: true } && !OwesPortalRetarget(_ctx.FiberStack.Current)
-                    && !(_ctx.ContextValueChanged && DetachedHost.HeldIn(node));
+                || NothingOwedBelow() && !(_ctx.ContextValueChanged && DetachedHost.HeldIn(node));
+
+        private bool NothingOwedBelow()
+            => _ctx.FiberStack.Current is not { PendingWorkBelow: true } && !OwesPortalRetarget(_ctx.FiberStack.Current);
+
+        // A list SkipsIdentical patches for its capture alone renders no row: nothing about it changed, and a row that
+        // reads the changed context is scheduled as every consumer is (GeneralPathReconciler.NotifyContextValueChange).
+        private bool CapturesOnly(VNode? oldNode, VNode? newNode)
+            => newNode is VirtualListNode && ReferenceEquals(oldNode, newNode) && NothingOwedBelow();
 
         // Read from the Portal entries, which clear ChildrenPending where the patch that mounts the children completes,
         // so a parked, aborted or subsumed reconcile of the fiber keeps patching until then. A fiber none of whose
@@ -1410,7 +1417,8 @@ namespace Velvet
                 var oi = oldMidEnd + k;
                 var ni = newMidEnd + k;
                 if (ReferenceEquals(oldNodes[oi], newNodes[ni]) && SkipsIdentical(newNodes[ni])) continue;
-                _patchWalk.PatchNode(occupants.Resolved(oi)!, oldNodes[oi], newNodes[ni]);
+                _patchWalk.PatchNode(
+                    occupants.Resolved(oi)!, oldNodes[oi], newNodes[ni], CapturesOnly(oldNodes[oi], newNodes[ni]));
                 if (_ctx.IsAborted) return;
             }
 
@@ -2053,7 +2061,8 @@ namespace Velvet
                     // element without patching.
                     if (!ReferenceEquals(old.node, newNode) || !SkipsIdentical(newNode))
                     {
-                        existingDomElement = _patchWalk.PatchNode(occupants.Resolved(old.index)!, old.node, newNode);
+                        existingDomElement = _patchWalk.PatchNode(
+                            occupants.Resolved(old.index)!, old.node, newNode, CapturesOnly(old.node, newNode));
                         if (_ctx.IsAborted) return true;
                     }
                     newElements.Add((existingDomElement, true));

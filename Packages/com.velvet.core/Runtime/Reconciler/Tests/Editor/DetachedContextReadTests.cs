@@ -44,6 +44,8 @@ namespace Velvet.Tests
         private static StateUpdater<string> s_setHostValue;
         private static VisualElement s_portalTarget;
         private static VNode s_shell;
+        private static VNode s_countingShell;
+        private static int s_countingRenders;
         private static StateUpdater<int> s_setSuspenderOwn;
         private static VelvetTaskCompletionSource<int> s_pendingRead;
         private static ComponentFiber s_hiddenHostFiber;
@@ -58,6 +60,8 @@ namespace Velvet.Tests
             _root = new VisualElement();
             s_portalTarget = new VisualElement();
             s_shell = V.Div(name: "shell", children: new VNode[] { RowList(ReaderRow) });
+            s_countingShell = V.Div(name: "shell", children: new VNode[] { RowList(CountingRow) });
+            s_countingRenders = 0;
             s_rowReadings.Clear();
             s_rowFibers.Clear();
             s_reading = null;
@@ -157,6 +161,26 @@ namespace Velvet.Tests
 
             // Assert — null where no row rendered.
             Assert.That(s_reading, Is.EqualTo("second"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base skips the list the host hands back by instance.
+        // What this pins is that the patch the list now takes for its capture renders no row: update the list there
+        // and the row renders again.
+        [Test]
+        public void Given_AListTheHostHandsBackByInstanceUnderAProviderNoRowReads_When_ThatProviderChanges_Then_NoRowRendersAgain()
+        {
+            // Arrange — laid out, so an update of the list renders its range again.
+            using var mounted = V.Mount(_root, V.Component(HostWithItsOwnValueAroundCountingShellRender, key: "host"));
+            RenderRange(mounted);
+            LayOutViewport(mounted);
+            var rendersBefore = s_countingRenders;
+
+            // Act
+            s_setHostValue.Invoke("second");
+            mounted.FlushStateForTest();
+
+            // Assert — -1 where the range rendered no row to begin with.
+            Assert.That(rendersBefore > 0 ? s_countingRenders - rendersBefore : -1, Is.EqualTo(0));
         }
 
         [Test]
@@ -494,6 +518,23 @@ namespace Velvet.Tests
             var (value, setValue) = Hooks.UseState("first");
             s_setHostValue = setValue;
             return RowList(item => V.Provider(s_theme, value, new VNode[] { V.Component(ReaderRender, key: item) }));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode HostWithItsOwnValueAroundCountingShellRender()
+        {
+            var (value, setValue) = Hooks.UseState("first");
+            s_setHostValue = setValue;
+            return V.Provider(s_theme, value, new[] { s_countingShell });
+        }
+
+        private static VNode CountingRow(string item) => V.Component(CountingRowRender, key: item);
+
+        [Component(Compiler = false)]
+        private static VNode CountingRowRender()
+        {
+            s_countingRenders++;
+            return V.Label(text: "row");
         }
 
         [Component(Compiler = false)]

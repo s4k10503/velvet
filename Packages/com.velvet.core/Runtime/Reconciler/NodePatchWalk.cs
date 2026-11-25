@@ -37,15 +37,16 @@ namespace Velvet
         // this contract.
         // Returns what occupies the element's slot as the patch leaves it, before a z-layer relocation the pass settles
         // later (FiberNodePatcher.PatchSelfPost).
-        internal VisualElement PatchNode(VisualElement element, VNode? oldNode, VNode? newNode)
+        // A list patched with capturesOnly records what its rows read and renders none of them.
+        internal VisualElement PatchNode(VisualElement element, VNode? oldNode, VNode? newNode, bool capturesOnly = false)
         {
             var patch = new FiberNodePatcher.SelfPatch(element, oldNode, newNode);
             _patcher.PatchSelfPre(ref patch);
-            ReconcileChildrenOf(ref patch);
+            ReconcileChildrenOf(ref patch, capturesOnly);
             return _patcher.PatchSelfPost(ref patch);
         }
 
-        private void ReconcileChildrenOf(ref FiberNodePatcher.SelfPatch patch)
+        private void ReconcileChildrenOf(ref FiberNodePatcher.SelfPatch patch, bool capturesOnly)
         {
             switch (patch.Kind)
             {
@@ -67,7 +68,7 @@ namespace Velvet
                 case FiberNodePatcher.SelfPatchKind.VirtualList:
                     // Ahead of the update, whose range renders rows under it.
                     patch.VirtualList!.DetachedHost?.Capture(_ctx, null);
-                    patch.VirtualList!.Update((VirtualListNode)patch.NewNode!);
+                    if (!capturesOnly) patch.VirtualList!.Update((VirtualListNode)patch.NewNode!);
                     break;
             }
         }
