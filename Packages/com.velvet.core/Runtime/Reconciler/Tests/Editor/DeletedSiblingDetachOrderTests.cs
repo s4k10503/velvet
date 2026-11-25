@@ -267,11 +267,12 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base takes the Portals in the order their records were made, tree order here.
         // The z-index or flex order sorts the element holding one Portal away from its slot in the holder's own list.
-        [TestCase("absolute z-10", true, "a b")]
-        [TestCase("absolute -z-10", false, "b a")]
-        [TestCase("order-last", true, "a b")]
+        // A flex order moves the element only under a flex or grid holder.
+        [TestCase("relative", "absolute z-10", true, "a b")]
+        [TestCase("relative", "absolute -z-10", false, "b a")]
+        [TestCase("relative flex", "order-last", true, "a b")]
         public void Given_ARowHoldingAPortalInsideARelocatedElementBesideAnotherPortal_When_AReconcileLeavesItsSlotEmpty_Then_TheirRowsDetachInTreeOrder(
-            string relocated, bool relocatedFirst, string expected)
+            string holder, string relocated, bool relocatedFirst, string expected)
         {
             // Arrange — the Portal inside the relocated element holds the row named a, the one beside it the row named b.
             var target = new VisualElement();
@@ -283,7 +284,7 @@ namespace Velvet.Tests
             var beside = V.Portal(target, children: Rows(keyed: false, "b"), key: "beside");
             var before = new VNode[]
             {
-                V.Div(name: "holder", className: "relative",
+                V.Div(name: "holder", className: holder,
                     children: relocatedFirst ? new VNode?[] { inside, beside } : new VNode?[] { beside, inside }),
             };
             _reconciler.Reconcile(_container, Array.Empty<VNode>(), before);

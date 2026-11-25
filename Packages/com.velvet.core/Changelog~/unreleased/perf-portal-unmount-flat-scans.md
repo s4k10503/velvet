@@ -1,11 +1,11 @@
 ### Changed
 
-- Unmounting many sibling Portals whose children are elements no longer costs the square of their count. Taking a
+- Unmounting many sibling Portals whose children hold no component no longer costs the square of their count. Taking a
   removed Portal down read every other Portal placed and every row of the target the Portals share, and its removal
-  rewrote the start of every range behind it on that target. A removal now finds the Portals inside what it takes
-  down by walking that subtree, and for Portals whose children are elements no longer reads every row of their target
-  for each one it removes. A target keeps its ranges' starts against an offset of its own, so a removal writes
-  whichever side of it holds fewer ranges.
+  rewrote the start of every range behind it on that target. A removal now finds the Portals inside what it takes down
+  by walking that subtree, and for Portals whose children hold no component no longer reads every row of their target
+  for each one it removes. A target keeps its ranges' starts against an offset of its own, so a removal writes whichever
+  side of it holds fewer ranges.
 
 ### Fixed
 
