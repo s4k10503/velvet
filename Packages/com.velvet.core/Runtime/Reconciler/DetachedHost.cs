@@ -10,8 +10,9 @@ namespace Velvet
     // controller owns it, or a V.Portal / V.WorldSpace, found by its placeholder. A walk that creates or patches the
     // node captures what the cursor holds around it within the frame (ComponentContextStack.EnterFrame) — the Providers
     // the owner's own output, or an enclosing host's children, put there — which goes on over what FiberContextSpine
-    // rebuilds from committed outputs; for a list it also takes the top of every context, which goes under that for
-    // the rows a range renders outside a pass. A render of a detached child reads the capture Resolve picks.
+    // rebuilds from committed outputs; for a list it also takes the top of every context but the orchestration, which
+    // goes under that for the rows a range renders outside a pass. A render of a detached child reads the capture
+    // Resolve picks.
     internal sealed class DetachedHost
     {
         // Bounds the captures held beside the committed one, which _committed keeps whatever this evicts.
