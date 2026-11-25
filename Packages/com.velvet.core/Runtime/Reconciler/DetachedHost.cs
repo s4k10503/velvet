@@ -41,9 +41,6 @@ namespace Velvet
             return host;
         }
 
-        internal static DetachedHost? OfPlaceholder(VisualElement placeholder)
-            => s_ofPlaceholder.TryGetValue(placeholder, out var host) ? host : null;
-
         // Whether a walk of node reaches a Portal or a list in the frame it walks node in: a component's output is
         // walked in a frame of its own, and a memo's inner, not being in the tree, counts as holding one.
         internal static bool HeldIn(VNode? node) => node switch

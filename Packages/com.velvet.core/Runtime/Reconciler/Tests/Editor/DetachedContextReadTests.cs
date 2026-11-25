@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -123,6 +124,7 @@ namespace Velvet.Tests
             // Arrange
             using var mounted = V.Mount(_root, V.Component(HostProvidingInsideItemsRender, key: "host"));
             RenderRange(mounted);
+            LayOutViewport(mounted);
             s_setHostValue.Invoke("second");
             mounted.FlushStateForTest();
             s_reading = null;
@@ -275,6 +277,7 @@ namespace Velvet.Tests
             // Arrange — the host's whole output is the list, so no walk encloses the rows' patches.
             using var mounted = V.Mount(_root, V.Component(HostProvidingAroundMemoizedRowsRender, key: "host"));
             RenderRange(mounted);
+            LayOutViewport(mounted);
             s_setHostValue.Invoke("second");
             mounted.FlushStateForTest();
             s_reading = null;
@@ -337,6 +340,13 @@ namespace Velvet.Tests
         private void RenderRange(MountedTree mounted)
             => mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()]
                 .UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+        // The viewport height a geometry pass would have left, without which the host's update renders no range
+        // (FiberVirtualListController.ForceRefresh), so the rows are never handed the renderer's new node.
+        private void LayOutViewport(MountedTree mounted)
+            => typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()], 200f);
 
         #region Components
 
