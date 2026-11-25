@@ -23,7 +23,8 @@ namespace Velvet
 
         internal DetachedHost(ComponentFiber? owner) => Owner = owner;
 
-        // FiberStack.Current where the walk reaches the node, which is the fiber the detached children parent under.
+        // FiberStack.Current where the walk reaches the node: the fiber the detached children parent under while it is
+        // mounted.
         internal ComponentFiber? Owner { get; }
 
         internal static DetachedHost OfPlaceholder(VisualElement placeholder, ComponentFiber? owner)
