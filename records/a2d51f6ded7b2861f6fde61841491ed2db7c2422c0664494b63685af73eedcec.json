@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed: Given_ACommitThatQueuesItselfAndThrowsOnEveryDrain_When_TheBoundedRunOfThrowingDrainsEnds_Then_ItsUpdateIsDroppedWithNoDrainRegistered, Given_AnUpdateDroppedAfterTheBoundedRunOfThrowingDrains_When_TheComponentUpdatesAgain_Then_ItCommits",
+ "file": "7c79f1ced52fc993fd85e745dd98056056fb6712a89cf5d32ae6f180238fa8ec",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DrainExceptionRecoveryTests.Given_ACommitThatQueuesItselfAndThrowsOnEveryDrain_When_TheBoundedRunOfThrowingDrainsEnds_Then_ItsUpdateIsDroppedWithNoDrainRegistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainExceptionRecoveryTests.cs": "7e04536445c82ebf523db6b3119ee7b89838784274720918effb695cb6e42339",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DrainExceptionRecoveryTests.Given_AnUpdateDroppedAfterTheBoundedRunOfThrowingDrains_When_TheComponentUpdatesAgain_Then_ItCommits",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainExceptionRecoveryTests.cs": "7e04536445c82ebf523db6b3119ee7b89838784274720918effb695cb6e42339",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45764469464",
+ "mutant": {
+  "after": ";",
+  "before": "CountRun(completed);",
+  "column": 16,
+  "line": 490,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBatchScheduler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

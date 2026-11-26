@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_AHeldRoot_When_ItsHoldIsGivenBack_Then_ItKeepsNoCallbackTheHoldRegistered",
+ "file": "e92bcb721c53d77aeff89e463fb9ff08cb77571b2411f1c3af205dc3fb6fd89e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleTransitionHoldTests.Given_AHeldRoot_When_ItsHoldIsGivenBack_Then_ItKeepsNoCallbackTheHoldRegistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleTransitionHoldTests.cs": "793b6a6e7a8ab93472532f5992d003575e970ba5eabc8b0a059315665c85b7e5",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792"
+   }
+  }
+ ],
+ "measured_by": "45764469464",
+ "mutant": {
+  "after": ";",
+  "before": "_root.UnregisterCallback(s_onAttached);",
+  "column": 20,
+  "line": 188,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTransitionBehavior.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

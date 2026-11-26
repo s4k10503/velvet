@@ -1,0 +1,86 @@
+{
+ "detail": "EditMode: 5 failed among the 5 case(s) that ran the site: Given_AHandedOnRangeWhoseNewRowThrowsAsItMounts_When_ThePanelRunsAPass_Then_ThePanelsOtherScheduledWorkHasRun, Given_ARowThatScrollsItsListBackAndForthAndThrowsOnEveryUpdate_When_ThePanelRunsSixPasses_Then_TheHandleHasRunThreeTimes, Given_ARowThatScrollsItsListBackAndForthAndThrowsOnEveryUpdate_When_ThePanelRunsSixPasses_Then_ThePanelsOtherScheduledWorkHasRun",
+ "file": "7c79f1ced52fc993fd85e745dd98056056fb6712a89cf5d32ae6f180238fa8ec",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HeldWorkReleaseTests.Given_AHandedOnRangeWhoseNewRowThrowsAsItMounts_When_ThePanelRunsAPass_Then_ThePanelsOtherScheduledWorkHasRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HeldWorkReleaseTests.cs": "1b84bf462c5959e59f412468ebb717ad4ef2e18d866963b60b6fc93fa77e81cf",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.HeldWorkReleaseTests.Given_ARowThatScrollsItsListBackAndForthAndThrowsOnEveryUpdate_When_ThePanelRunsSixPasses_Then_TheHandleHasRunThreeTimes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HeldWorkReleaseTests.cs": "1b84bf462c5959e59f412468ebb717ad4ef2e18d866963b60b6fc93fa77e81cf",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.HeldWorkReleaseTests.Given_ARowThatScrollsItsListBackAndForthAndThrowsOnEveryUpdate_When_ThePanelRunsSixPasses_Then_ThePanelsOtherScheduledWorkHasRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HeldWorkReleaseTests.cs": "1b84bf462c5959e59f412468ebb717ad4ef2e18d866963b60b6fc93fa77e81cf",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.HeldWorkReleaseTests.Given_ARowWhoseEveryCommitScrollsItsListTheOtherWayAndThrows_When_ThePanelRunsSixPasses_Then_TheHandleHasRunFourTimes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HeldWorkReleaseTests.cs": "1b84bf462c5959e59f412468ebb717ad4ef2e18d866963b60b6fc93fa77e81cf",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.HeldWorkReleaseTests.Given_ARowWhoseLayoutEffectScrollsItsListAndWhoseHandleThrows_When_TheRootsNextFrameRuns_Then_TheRangeTheScrollerAsksForHasRendered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HeldWorkReleaseTests.cs": "1b84bf462c5959e59f412468ebb717ad4ef2e18d866963b60b6fc93fa77e81cf",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45764469464",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 45,
+  "line": 374,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBatchScheduler.cs",
+  "shadowed": [
+   "clause removed",
+   "guard removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

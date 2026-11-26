@@ -1,0 +1,110 @@
+{
+ "detail": "EditMode: 8 failed in Velvet.Tests.Reconciler.Editor: Given_APortalInsideARemovedElement_When_TheElementIsRemoved_Then_ThePortalsChildrenAreTakenDownWhereThePortalSits, Given_APortalInsideARemovedElementAndOneBesideItOnTheSameTarget_When_TheElementIsRemoved_Then_TheOtherPortalsChildrenStay, Given_APortalChildHoldingAPortalOfAList_When_TheElementAroundTheOuterPortalIsRemoved_Then_TheListsRowIsTakenDownWhereItsPortalSits",
+ "file": "9bffc5bfa203db799d15ec578a1fd242f2b6ccffd6f7a17a190c1946afb214de",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DeletionCommitOrderEventLogTests(UIToolkit).Given_APortalInsideARemovedElementAndOneBesideItOnTheSameTarget_When_TheElementIsRemoved_Then_TheOtherPortalsChildrenStay",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletionCommitOrderEventLogTests.cs": "9e03decc21e31a7079265a2b8507d2ab3aba91d4f9b2607a861e73b64ec65995",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DeletionCommitOrderEventLogTests(UIToolkit).Given_APortalInsideARemovedElement_When_TheElementIsRemoved_Then_ThePortalsChildrenAreTakenDownWhereThePortalSits",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletionCommitOrderEventLogTests.cs": "9e03decc21e31a7079265a2b8507d2ab3aba91d4f9b2607a861e73b64ec65995",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DeletionCommitOrderEventLogTests+UIToolkitOnlyDeletions.Given_APortalChildHoldingAPortalOfAList_When_TheElementAroundTheOuterPortalIsRemoved_Then_TheListsRowIsTakenDownWhereItsPortalSits",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletionCommitOrderEventLogTests.cs": "9e03decc21e31a7079265a2b8507d2ab3aba91d4f9b2607a861e73b64ec65995",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DeletionCommitStateTests.Given_ADeletionDetachingAPortalWhereThePassesWritesApply_When_ItHasEnded_Then_NoPooledWalkKeepsAnOwnerOfARowItDetached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletionCommitStateTests.cs": "d8050535878075dc41d5d70cc123a362724f6fad48f2ff10a56941daaa870d56",
+    "Packages/com.velvet.core/TestUtilities/DeletionCommitPool.cs": "9906a3a5111d0c9012dd0a9c09d66ad2b0ff04b7b25056cafe11b88de750ec7e",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalDeletionAtApplyTests.Given_ADeletedRowHoldingAPortalAheadOfAnotherOnTheTarget_When_ARowAfterBothRendersInThePass_Then_TheOthersRangeStartsWhereTheRemovalLeavesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalDeletionAtApplyTests.cs": "db5a6c840a634a4be7e2f13329a2078e28aeb96daabd7f63ad5631643de91e83",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalDeletionAtApplyTests.Given_ADeletedRowHoldingAPortalIntoAnElementInsideIt_When_TheParentStopsRenderingIt_Then_ThePortalsCleanupsRunBeforeARowAfterItRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalDeletionAtApplyTests.cs": "db5a6c840a634a4be7e2f13329a2078e28aeb96daabd7f63ad5631643de91e83",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalDeletionAtApplyTests.Given_TwoPortalsInADeletedRowAheadOfAnotherOnTheTarget_When_ARowAfterAllRendersInThePass_Then_TheOthersRangeStartsWhereTheRemovalsLeaveIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalDeletionAtApplyTests.cs": "db5a6c840a634a4be7e2f13329a2078e28aeb96daabd7f63ad5631643de91e83",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspenseRevealCommitOrderEventLogTests(UIToolkit).Given_ASuspenseHidingAPortal_When_TheSuspenseIsRemoved_Then_OnlyTheHiddenTreesInsertionCleanupsRunThroughThePortalAheadOfTheFallbacks",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseRevealCommitOrderEventLogTests.cs": "5c5c4973b9047d5862e38ffb779f4c773721e6aadc10d8437d8f546f00727dd7",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/EventLogRenderer.cs": "59fbaf33c955e917c5359940c3d0a0f090fefdc0d2a41b370a75eb6ce7304abe",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45764469464",
+ "mutant": {
+  "after": ";",
+  "before": "MeetPortalsUnder(child);",
+  "column": 16,
+  "line": 431,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DeletionCommit.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

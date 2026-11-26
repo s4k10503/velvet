@@ -1,0 +1,49 @@
+{
+ "detail": "EditMode: 3 failed among the 10 case(s) that ran the site: Given_AKeyedListLongerThanARowBlock_When_ATimeSlicedReconcileRemovesItsTail_Then_TheRowsItKeepsStay, Given_KeyedTailRemove_When_TimeSliced_Then_RemovesFromEnd, Given_OneKeyedRow_When_ATimeSlicedReconcileRemovesItOverBudget_Then_NothingIsLeftPending",
+ "file": "778827426ff4eee04c5736f7c023fa6eb6b8c67a73ffe73c402f8bb9e25f4afa",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TimeSlicedReconcilerTests.Given_AKeyedListLongerThanARowBlock_When_ATimeSlicedReconcileRemovesItsTail_Then_TheRowsItKeepsStay",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedReconcilerTests.cs": "7da1608d0af0cd9d565d1515f3e354c166c555e0ddb6d40fa229b0e7ea180d7e",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.TimeSlicedReconcilerTests.Given_KeyedTailRemove_When_TimeSliced_Then_RemovesFromEnd",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedReconcilerTests.cs": "7da1608d0af0cd9d565d1515f3e354c166c555e0ddb6d40fa229b0e7ea180d7e",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.TimeSlicedReconcilerTests.Given_OneKeyedRow_When_ATimeSlicedReconcileRemovesItOverBudget_Then_NothingIsLeftPending",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedReconcilerTests.cs": "7da1608d0af0cd9d565d1515f3e354c166c555e0ddb6d40fa229b0e7ea180d7e",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  }
+ ],
+ "measured_by": "45764469464",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 28,
+  "line": 1728,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

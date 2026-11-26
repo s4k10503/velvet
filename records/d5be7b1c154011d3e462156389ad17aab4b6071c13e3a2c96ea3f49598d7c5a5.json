@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 199 case(s) that ran the site: Given_AnActionThatMountsARootWhoseLayoutEffectStartsATransition_When_ItThenAwaitsACompletedVelvetTask_Then_ItsContinuationWaitsForTheMainThreadsNextTick",
+ "file": "68b0075448ecaeb8c686149378f132b59ffc9487c3511caf40b75edcf906665c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TransitionAwaitGateTests.Given_AnActionThatMountsARootWhoseLayoutEffectStartsATransition_When_ItThenAwaitsACompletedVelvetTask_Then_ItsContinuationWaitsForTheMainThreadsNextTick",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TransitionAwaitGateTests.cs": "c2fd5cd007e845361d9df24d5a5c5ca26f8ee5cd7500245c958aa6cae4ff2a0f"
+   }
+  }
+ ],
+ "measured_by": "45764469464",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 83,
+  "line": 73,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWorkLoop.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

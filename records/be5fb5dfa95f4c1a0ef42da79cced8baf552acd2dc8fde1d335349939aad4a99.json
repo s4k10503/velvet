@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_TwoSiblingsSharingAKey_When_Mounted_Then_TheRepeatIsReported",
+ "file": "d85fd7f278055d71fa873933f5d412231866c62e85d833cd9eb856c77b054ea8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GeneralPathLeafMatchTests.Given_TwoSiblingsSharingAKey_When_Mounted_Then_TheRepeatIsReported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/GeneralPathLeafMatchTests.cs": "f66c65d2a9eea59c81e0e8983387a66a4c9d8e77e6234252e2fd470102201132",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f"
+   }
+  }
+ ],
+ "measured_by": "45764469464",
+ "mutant": {
+  "after": ";",
+  "before": "commit.NewKeys.Add(key);",
+  "column": 12,
+  "line": 397,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}
