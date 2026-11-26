@@ -1,0 +1,24 @@
+{
+ "detail": "EditMode: the editor was killed at 1009s, 1.5 times the baseline's 669s plus 5s, with no readable result",
+ "file": "d5aa617b657d8dfcff77fc58ea5e811b2e195a6d2979afef635a29fb0e20f1a8",
+ "killers": [],
+ "measured_by": "45723999015",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 19,
+  "line": 255,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberExecutionContext.cs",
+  "shadowed": [
+   "guard removed",
+   "literal"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed (timed out)"
+}

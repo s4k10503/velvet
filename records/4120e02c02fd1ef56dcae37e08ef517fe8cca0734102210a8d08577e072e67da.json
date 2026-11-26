@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_UseIsFetching_When_ARequestStartsAndLands_Then_TheComponentRendersEachCount",
+ "file": "68b0075448ecaeb8c686149378f132b59ffc9487c3511caf40b75edcf906665c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryCacheTests.Given_UseIsFetching_When_ARequestStartsAndLands_Then_TheComponentRendersEachCount",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "0b7b39a8c622b096633e859404152402a1c589f60c7fea07d752dc1da6ca4d6d",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45723999015",
+ "mutant": {
+  "after": ";",
+  "before": "CommitFlushedFiber(fiber);",
+  "column": 12,
+  "line": 678,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWorkLoop.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

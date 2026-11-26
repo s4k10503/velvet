@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_ARunningAnimationTestWhoseDelegateThrew_When_ItIsReadAgain_Then_TheReadAllocatesNothing",
+ "file": "7804f30356b328f19e003e8f737b36b616fd8ed2c17590cfd1d30293d98cc2cb",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RunningStyleAnimationsTests.Given_ARunningAnimationTestWhoseDelegateThrew_When_ItIsReadAgain_Then_TheReadAllocatesNothing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RunningStyleAnimationsTests.cs": "7b4c3b1f079fe4f55f5ca7e2d4daf7ff8516a6ceccbcc99e6958e407a408fabd",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "45723999015",
+ "mutant": {
+  "after": ";",
+  "before": "s_of = null;",
+  "column": 16,
+  "line": 50,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/RunningStyleAnimations.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

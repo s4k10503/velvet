@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed: Given_TheEnginesRunningAnimationFlag_When_ItsGetterIsBoundAsAnOpenInstanceDelegate_Then_ItBinds, Given_TheEnginesRunningAnimationTest_When_BoundOverTheIntItsPropertyIdIsHeldAs_Then_ItBinds",
+ "file": "a2d323a2388674aa324f868c4bede8f952f05ae257f2510e5a3ca8895633ead2",
+ "killers": [
+  {
+   "case": "Velvet.Tests.EngineMemberResolutionTests.Given_TheEnginesRunningAnimationFlag_When_ItsGetterIsBoundAsAnOpenInstanceDelegate_Then_ItBinds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/EngineMemberResolutionTests.cs": "5e09d065ab193c714931f5122a76e221e4d4e6f2ba7ef148b7d24b5d289a1239"
+   }
+  },
+  {
+   "case": "Velvet.Tests.EngineMemberResolutionTests.Given_TheEnginesRunningAnimationTest_When_BoundOverTheIntItsPropertyIdIsHeldAs_Then_ItBinds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/EngineMemberResolutionTests.cs": "5e09d065ab193c714931f5122a76e221e4d4e6f2ba7ef148b7d24b5d289a1239"
+   }
+  }
+ ],
+ "measured_by": "45723999015",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 29,
+  "line": 805,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/EngineMember.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

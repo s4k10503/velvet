@@ -1,0 +1,44 @@
+{
+ "detail": "EditMode: 2 failed: Given_ASynchronousTransitionCallbackThatDrivesAFlush_When_ItThenDefersAWrite_Then_ThatFlushRendersThePendingBranch, Given_ASynchronousTransitionCallbackThatDrivesAFlushAndEnrolsNothing_When_ItReturns_Then_TheIndicatorItRaisedComesDown",
+ "file": "68b0075448ecaeb8c686149378f132b59ffc9487c3511caf40b75edcf906665c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseTransitionTests.Given_ASynchronousTransitionCallbackThatDrivesAFlushAndEnrolsNothing_When_ItReturns_Then_TheIndicatorItRaisedComesDown",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseTransitionTests.cs": "f8626d27e9931c13a83c04672cce0945074c04a747db75576cc2b47e5f061124",
+    "Packages/com.velvet.core/TestUtilities/BoundedAwait.cs": "ae178c714cee6e186879f5df772786a10a30eacb66dd88a93cf5762dc9c05c42",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseTransitionTests.Given_ASynchronousTransitionCallbackThatDrivesAFlush_When_ItThenDefersAWrite_Then_ThatFlushRendersThePendingBranch",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseTransitionTests.cs": "f8626d27e9931c13a83c04672cce0945074c04a747db75576cc2b47e5f061124",
+    "Packages/com.velvet.core/TestUtilities/BoundedAwait.cs": "ae178c714cee6e186879f5df772786a10a30eacb66dd88a93cf5762dc9c05c42",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45723999015",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 44,
+  "line": 94,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWorkLoop.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

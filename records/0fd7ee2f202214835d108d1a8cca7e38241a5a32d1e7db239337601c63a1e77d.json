@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_APlanBuiltAndNeverExecuted_When_TheDeletionEnds_Then_ThePlanHoldsNoStep",
+ "file": "e0d708d08d1c4e5ebfa0a47213f1d2821a03f2b979dac153d52d9200443521c4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DeletionPlanTests.Given_APlanBuiltAndNeverExecuted_When_TheDeletionEnds_Then_ThePlanHoldsNoStep",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletionPlanTests.cs": "9d8d76f6d630d5e298b0fe41087bcacbc90dbf3abc6f353d584da5a13c334ead",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45723999015",
+ "mutant": {
+  "after": ";",
+  "before": "PreOrderTeardown.ClearAndTrim(Steps);",
+  "column": 12,
+  "line": 58,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DeletionPlan.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

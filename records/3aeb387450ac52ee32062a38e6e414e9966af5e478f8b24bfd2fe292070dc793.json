@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 90 case(s) that ran the site: Given_KeyedList_When_RotatedSoLisBlockMovesToFront_Then_OrderIsCorrect",
+ "file": "bf4efa9b3f7b8a391042c263772633b74d9113e4c4a3a772c68d91146866cc0f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReconcilerKeyedTests.Given_KeyedList_When_RotatedSoLisBlockMovesToFront_Then_OrderIsCorrect",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ReconcilerKeyedTests.cs": "e7ec04c2cba0ff75a83fcfb36163792e213c4e7b79e971330743973c82f35a6c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681"
+   }
+  }
+ ],
+ "measured_by": "45723999015",
+ "mutant": {
+  "after": ";",
+  "before": "RecordRemoveAt(pass, container, parent, index);",
+  "column": 16,
+  "line": 672,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

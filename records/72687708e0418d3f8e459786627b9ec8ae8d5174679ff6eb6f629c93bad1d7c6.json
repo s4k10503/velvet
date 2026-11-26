@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_AHelperBoundaryThatCaught_When_ItIsResetInATransitionAndAnUrgentUpdateRendersItFirst_Then_OnlyTheTransitionRendersItsChildren",
+ "file": "7c79f1ced52fc993fd85e745dd98056056fb6712a89cf5d32ae6f180238fa8ec",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VErrorBoundaryResetTests.Given_AHelperBoundaryThatCaught_When_ItIsResetInATransitionAndAnUrgentUpdateRendersItFirst_Then_OnlyTheTransitionRendersItsChildren",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VErrorBoundaryResetTests.cs": "9b4a2d3b0237519f8738988aad614310236057b9a792d6707e451f95b99c6ce1",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45723999015",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 19,
+  "line": 494,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBatchScheduler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

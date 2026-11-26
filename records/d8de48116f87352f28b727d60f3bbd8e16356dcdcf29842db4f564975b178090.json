@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_ABracketedVariant_When_ParsedAsASkew_Then_NothingIsAllocated; 1 other editor(s) were up",
+ "file": "8c53fb15dc7cba1edb25321527c60cabbbb8b37f2e82bbad9c8340a12def2565",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ClassReadAllocationTests.Given_ABracketedVariant_When_ParsedAsASkew_Then_NothingIsAllocated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ClassReadAllocationTests.cs": "04a2228d9f3016a038aeb4473f73445d8fed2acd7c8413061eb7e1c691609666",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "45723999015",
+ "mutant": {
+  "after": "&&",
+  "before": "||",
+  "column": 40,
+  "line": 189,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleSkewClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

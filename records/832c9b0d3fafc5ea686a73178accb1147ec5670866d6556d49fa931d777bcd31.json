@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 5 case(s) that ran the site: Given_AHasClassElementNamingTheBoxClipAboveAMotionTextFieldEnteringFromATextOverflowUtility_When_TheEnterTakesItAway_Then_ItStopsMatching",
+ "file": "709f330fe93f2374885c0d9700889a28f118b052e89c7b3e7ebde7a7981ea545",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PlayClassHasVariantTests.Given_AHasClassElementNamingTheBoxClipAboveAMotionTextFieldEnteringFromATextOverflowUtility_When_TheEnterTakesItAway_Then_ItStopsMatching",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PlayClassHasVariantTests.cs": "c25773c076748bc25e8e06774cc116d16815eba6605965cbde9c107de9ee430f"
+   }
+  }
+ ],
+ "measured_by": "45723999015",
+ "mutant": {
+  "after": ";",
+  "before": "changes.NoteCompanion(also.Clip);",
+  "column": 24,
+  "line": 127,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleAnimationClassUtils.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed among the 484 case(s) that ran the site: Given_AHasClassElementAboveAMotion_When_ItsMountEnterWritesThePoseCarryingTheClass_Then_ItMatches, Given_AHasClassElementNamingTheBoxClipAboveAMotionTextField_When_ItsMountEnterSwapsInATextOverflowUtility_Then_ItMatches, Given_AHasClassElementNamingTheBoxClipAboveAMotionTextFieldEnteringFromATextOverflowUtility_When_TheEnterTakesItAway_Then_ItStopsMatching",
+ "file": "8d39435513aeeaee3a590cf69c797e9c9ece76f12d6024ed57883409be3e32f0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PlayClassHasVariantTests.Given_AHasClassElementAboveAMotion_When_ItsMountEnterWritesThePoseCarryingTheClass_Then_ItMatches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PlayClassHasVariantTests.cs": "c25773c076748bc25e8e06774cc116d16815eba6605965cbde9c107de9ee430f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PlayClassHasVariantTests.Given_AHasClassElementNamingTheBoxClipAboveAMotionTextFieldEnteringFromATextOverflowUtility_When_TheEnterTakesItAway_Then_ItStopsMatching",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PlayClassHasVariantTests.cs": "c25773c076748bc25e8e06774cc116d16815eba6605965cbde9c107de9ee430f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PlayClassHasVariantTests.Given_AHasClassElementNamingTheBoxClipAboveAMotionTextField_When_ItsMountEnterSwapsInATextOverflowUtility_Then_ItMatches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PlayClassHasVariantTests.cs": "c25773c076748bc25e8e06774cc116d16815eba6605965cbde9c107de9ee430f"
+   }
+  }
+ ],
+ "measured_by": "45723999015",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 35,
+  "line": 3476,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}
