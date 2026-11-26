@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 320 case(s) that ran the site: Given_ARelocatedElementWhoseHasPayloadGoesOff_When_ThePassAlsoAppendsTheLastRow_Then_TheLastRowHoldsTheLastPayload",
+ "file": "3d568b98698b0611267b3189e283246611ee80acb1a58c654463b2339696e9fa",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PatchReadBackTests.Given_ARelocatedElementWhoseHasPayloadGoesOff_When_ThePassAlsoAppendsTheLastRow_Then_TheLastRowHoldsTheLastPayload",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PatchReadBackTests.cs": "c3899adf4e1d18a675511c65cabb044fa35ca635a806b1cefbe5988ed7c26ff1"
+   }
+  }
+ ],
+ "measured_by": "45818950682",
+ "mutant": {
+  "after": "",
+  "before": " || ctx.Pass.Applying",
+  "column": 34,
+  "line": 550,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

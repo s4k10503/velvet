@@ -1,0 +1,37 @@
+{
+ "detail": "EditMode: 1 failed: Given_ADarkVariantAutoInATreeMountedInsideAnotherTreesNoneScope_When_TheThemeTurnsDark_Then_ItTakesPointersWithoutTheOuterTreeRendering",
+ "file": "28c4745c238bef63728079c8e51013bfdf07b335178ae0754510f57d5394852e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PointerEventsPanelTests.Given_ADarkVariantAutoInATreeMountedInsideAnotherTreesNoneScope_When_TheThemeTurnsDark_Then_ItTakesPointersWithoutTheOuterTreeRendering",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/PointerEventsUtilityTests.cs": "0a51328fb0afc86e4ff61821b7c8e5907c888ad374ebea52878758ae5b57479e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "45818950682",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 34,
+  "line": 364,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

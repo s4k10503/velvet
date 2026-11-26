@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_AHeldElementBelowAnotherHeldOne_When_TheOuterElementIsReleased_Then_TheInnerOneWritesTheDefaultFamily",
+ "file": "8bf0319faea977ea3022ee21ae6d9eb14288705e52cfa5be955cf581248428b1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DefaultFamilyHoldScopeTests.Given_AHeldElementBelowAnotherHeldOne_When_TheOuterElementIsReleased_Then_TheInnerOneWritesTheDefaultFamily",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyHoldScopeTests.cs": "70c0549333f04d4761c11c41ae21faa5804050ef543df8a73865c23c7c9637e1"
+   }
+  }
+ ],
+ "measured_by": "45818950682",
+ "mutant": {
+  "after": ";",
+  "before": "CollectHeldAtOrUnder(scope);",
+  "column": 12,
+  "line": 163,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DefaultFamilyRoots.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

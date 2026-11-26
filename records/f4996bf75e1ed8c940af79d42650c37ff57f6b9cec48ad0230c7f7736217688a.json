@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 297 case(s) that ran the site: Given_NestedPortalsSameTarget_When_OuterUnmounts_Then_WholeChainIsRemoved",
+ "file": "14c04642da77872dad0a6b981d358a526bb947af046c1b7eea7c66c0999ce9da",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalTests.Given_NestedPortalsSameTarget_When_OuterUnmounts_Then_WholeChainIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalTests.cs": "c9e4f090f3dc779098d390917e015c9eb445edfcdab0e4313e6f2035e57a70be",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "45818950682",
+ "mutant": {
+  "after": ";",
+  "before": "CleanupElement(child, child.panel, discardedRoot: null, plan);",
+  "column": 16,
+  "line": 712,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

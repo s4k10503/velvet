@@ -1,0 +1,102 @@
+{
+ "detail": "EditMode: 12 failed: Given_AChildMatchingOnlyInAComponentsElementWhoseUserDataTheApplicationWroteOver_When_AnotherRootIsMountedIntoIt_Then_ItStopsMatching, Given_AChildMatchingOnlyInAnElementWhoseUserDataTheApplicationWroteOver_When_AnotherRootsPortalMountsARowBesideIt_Then_ItStopsMatching, Given_AChildMatchingOnlyInARootsTopElementWhoseUserDataTheApplicationWroteOverMountedIntoAThirdRootsElement_When_AnotherRootsPortalMountsARowBesideIt_Then_ItStopsMatching",
+ "file": "5b487d3b6732ebb8d84251e993b7847e989e63c22f526a0c499ee8624da37d47",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CrossRootStructuralVariantTests.Given_AChildMatchingOnlyInAComponentsElementWhoseUserDataTheApplicationWroteOver_When_AnotherRootIsMountedIntoIt_Then_ItStopsMatching",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossRootStructuralVariantTests.cs": "e48c99014cb47789a515416e49633f48e719d381941586dd35902843c8149546",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CrossRootStructuralVariantTests.Given_AChildMatchingOnlyInARootsTopElementWhoseUserDataTheApplicationWroteOverMountedIntoAThirdRootsElement_When_AnotherRootsPortalMountsARowBesideIt_Then_ItStopsMatching",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossRootStructuralVariantTests.cs": "e48c99014cb47789a515416e49633f48e719d381941586dd35902843c8149546",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CrossRootStructuralVariantTests.Given_AChildMatchingOnlyInAScrollViewOfOneRoot_When_AnotherRootIsMountedIntoTheScrollView_Then_ItStopsMatching",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossRootStructuralVariantTests.cs": "e48c99014cb47789a515416e49633f48e719d381941586dd35902843c8149546",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CrossRootStructuralVariantTests.Given_AChildMatchingOnlyInAScrollViewOfOneRoot_When_AnotherRootsPortalMountsARowBesideIt_Then_ItStopsMatching",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossRootStructuralVariantTests.cs": "e48c99014cb47789a515416e49633f48e719d381941586dd35902843c8149546",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CrossRootStructuralVariantTests.Given_AChildMatchingOnlyInAnElementWhoseUserDataTheApplicationWroteOver_When_AnotherRootsPortalMountsARowBesideIt_Then_ItStopsMatching",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossRootStructuralVariantTests.cs": "e48c99014cb47789a515416e49633f48e719d381941586dd35902843c8149546",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CrossRootStructuralVariantTests.Given_AChildMatchingOnlyInOneRoot_When_AnotherRootIsMountedIntoItsParent_Then_ItStopsMatching",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossRootStructuralVariantTests.cs": "e48c99014cb47789a515416e49633f48e719d381941586dd35902843c8149546",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CrossRootStructuralVariantTests.Given_AChildMatchingOnlyInOneRoot_When_AnotherRootsPortalMountsARowBesideIt_Then_ItStopsMatching",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossRootStructuralVariantTests.cs": "e48c99014cb47789a515416e49633f48e719d381941586dd35902843c8149546",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CrossRootStructuralVariantTests.Given_AnotherRootMountedBesideAChildInOneRoot_When_ThatRootIsDisposed_Then_TheChildMatchesOnlyAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossRootStructuralVariantTests.cs": "e48c99014cb47789a515416e49633f48e719d381941586dd35902843c8149546",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CrossRootStructuralVariantTests.Given_AnotherRootsPortalRowAloneInAScrollViewOfOneRoot_When_ThatRootRendersAChildIntoIt_Then_TheRowStopsMatchingOnly",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossRootStructuralVariantTests.cs": "e48c99014cb47789a515416e49633f48e719d381941586dd35902843c8149546",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CrossRootStructuralVariantTests.Given_AnotherRootsPortalRowAloneInAnElementOfOneRoot_When_ThatRootRendersAChildIntoIt_Then_TheRowStopsMatchingOnly",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossRootStructuralVariantTests.cs": "e48c99014cb47789a515416e49633f48e719d381941586dd35902843c8149546",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45818950682",
+ "mutant": {
+  "after": ";",
+  "before": "AddCreators(placers, content);",
+  "column": 12,
+  "line": 27,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/SharedRowContainers.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

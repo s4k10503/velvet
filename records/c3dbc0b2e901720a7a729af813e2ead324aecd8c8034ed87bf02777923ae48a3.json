@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 163 case(s) that ran the site: Given_ALayoutCleanupInASuspensesChildrenThatSetsAnotherRootsState_When_TheBoundaryHidesThem_Then_TheOtherRootHasRenderedTheUpdate, Given_ARefInASuspensesChildrenWhoseCleanupSetsAnotherRootsState_When_TheBoundaryHidesThem_Then_TheOtherRootHasRenderedTheUpdate",
+ "file": "d85fd7f278055d71fa873933f5d412231866c62e85d833cd9eb856c77b054ea8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MutationPhaseUpdateOnAnotherRootTests.Given_ALayoutCleanupInASuspensesChildrenThatSetsAnotherRootsState_When_TheBoundaryHidesThem_Then_TheOtherRootHasRenderedTheUpdate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MutationPhaseUpdateOnAnotherRootTests.cs": "d4ebb77e25851349be5dcc90547c743058f71ea53e7457ac75c49e6121a65ce3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MutationPhaseUpdateOnAnotherRootTests.Given_ARefInASuspensesChildrenWhoseCleanupSetsAnotherRootsState_When_TheBoundaryHidesThem_Then_TheOtherRootHasRenderedTheUpdate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MutationPhaseUpdateOnAnotherRootTests.cs": "d4ebb77e25851349be5dcc90547c743058f71ea53e7457ac75c49e6121a65ce3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45818950682",
+ "mutant": {
+  "after": ";",
+  "before": "AddWithPortalChildren(row, i, commit, walk, hidden, portals);",
+  "column": 16,
+  "line": 2005,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

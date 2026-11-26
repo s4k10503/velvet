@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 1862 case(s) that ran the site: Given_AWhileHoverLayoutClassOnATextField_When_ThePointerEntersTheField_Then_OnlyTheFieldTakesIt",
+ "file": "21d71f6a4a0dc8897896971c0c69a7b4193210bfbbff1ca05b42ffa91faac3ae",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AWhileHoverLayoutClassOnATextField_When_ThePointerEntersTheField_Then_OnlyTheFieldTakesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "d4c49a1a1b965dd12817918dcd25cd32875b71fc891fe0f9112249219736d70d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45818950682",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 36,
+  "line": 163,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleInputBoxSurface.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

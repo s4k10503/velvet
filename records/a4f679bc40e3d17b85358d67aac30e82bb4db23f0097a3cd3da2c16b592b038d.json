@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 125 case(s) that ran the site: Given_TwoClassesOnAClippedElement_When_TheOrderTheyWereAddedInIsReversed_Then_ItsWrapperCarriesTheSameClassesBothWays",
+ "file": "79c649a7ad8578e7bd9520cf9d4a43e6af4446c2c619c66271652be706a5ec15",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LiveClassListOrderTests.Given_TwoClassesOnAClippedElement_When_TheOrderTheyWereAddedInIsReversed_Then_ItsWrapperCarriesTheSameClassesBothWays",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LiveClassListOrderTests.cs": "881116fcbaab9e42c33c7459371ac1f6bb03a17bf877fb44c0903902cc922c53",
+    "Packages/com.velvet.core/TestUtilities/StyleUtilityTableProbe.cs": "58593d5382fa23d3309ac2c37e52681c1ac9f00e9cc3f7b201711b900e539707"
+   }
+  }
+ ],
+ "measured_by": "45818950682",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 48,
+  "line": 216,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ClipPathLayoutBox.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

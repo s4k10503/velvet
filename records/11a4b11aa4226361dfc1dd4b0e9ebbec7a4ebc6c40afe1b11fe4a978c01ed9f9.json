@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "2d496a77bbe779126875761288a5c806d6c10d5650a61cdb5ea1ec856d57e1f5",
+ "killers": [],
+ "measured_by": "45818950682",
+ "mutant": {
+  "after": ";",
+  "before": "_freeAnchors.Push(anchor);",
+  "column": 16,
+  "line": 124,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilePass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "survived"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "699fc7ddeed3903d2e35766713331d9f18b68fd22394fa39d72e0735b8b26de7",
+ "killers": [],
+ "measured_by": "45818950682",
+ "mutant": {
+  "after": ";",
+  "before": "InlineFontLedger.Wrote(element, null, null);",
+  "column": 20,
+  "line": 261,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleFontResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "survived"
+}
