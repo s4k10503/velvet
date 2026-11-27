@@ -1,0 +1,37 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Reconciler.Editor: Given_AComponentWhoseDepsChangeInAWalkItsBoundaryCatches_When_TheFallbackRemovesIt_Then_OnlyItsTeardownRuns",
+ "file": "d15e045c35502b5dbf1fa27d6b16224ae747b17b943244ed7df1f0be1db1baa3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TurnEndOrderTests.Given_AComponentWhoseDepsChangeInAWalkItsBoundaryCatches_When_TheFallbackRemovesIt_Then_OnlyItsTeardownRuns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TurnEndOrderTests.cs": "eb4af02f21100d148a5200574c27904a38971bda2781aecd93eac9f35e1d9b9b",
+    "Packages/com.velvet.core/TestUtilities/AsyncActionsInFlightTestAccess.cs": "11111385db8b74b91d046342600e4a605fdce6c8f8ceb54e28adf8c204136034",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45957141583",
+ "mutant": {
+  "after": "",
+  "before": " || fiber.IsBeingDeleted",
+  "column": 32,
+  "line": 401,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": [
+   "clause removed",
+   "guard removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

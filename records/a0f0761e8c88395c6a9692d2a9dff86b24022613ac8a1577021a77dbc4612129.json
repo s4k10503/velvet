@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnImportantPlainClass_When_ClassesAreApplied_Then_TheTokenWithItsModifierIsNotOnTheClassList(\"p-4!\")",
+ "file": "448f50495d50f0e49f45658bb955a40bb78e99fef56c1b74f4b5296035a2aa71",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ApplyClassNamesTokenOwnershipTests.Given_AnImportantPlainClass_When_ClassesAreApplied_Then_TheTokenWithItsModifierIsNotOnTheClassList(\"p-4!\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ApplyClassNamesTokenOwnershipTests.cs": "b0128ef5396e785feb3cda09c8c657fcb5afe3ecb0e934ed3465dfeb34121b44"
+   }
+  }
+ ],
+ "measured_by": "45957141583",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 50,
+  "line": 79,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

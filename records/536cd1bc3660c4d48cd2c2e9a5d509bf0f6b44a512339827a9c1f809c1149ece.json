@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 97 case(s) that ran the site: Given_AShownProbeHiddenAndRevealedOnce_When_ItIsHiddenAgainWithItsDepsUnchangedAndRevealed_Then_ItsInsertionEffectDoesNotRunAgain",
+ "file": "24c1de412bb4041319ca23437206fab9e4f39f3c03e115b5b630c08597f4e150",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspenseHiddenInsertionEffectTests.Given_AShownProbeHiddenAndRevealedOnce_When_ItIsHiddenAgainWithItsDepsUnchangedAndRevealed_Then_ItsInsertionEffectDoesNotRunAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenInsertionEffectTests.cs": "4e10c17ec899b241d099d00f514bcc3340f5a8eb48a77cfd574de1ef03ededc8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45957141583",
+ "mutant": {
+  "after": ";",
+  "before": "Pass.Journal.RecordHooks(renders);",
+  "column": 16,
+  "line": 2420,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

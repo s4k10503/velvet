@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_MountedComponent_When_Disposed_Then_ChildFiberIsDetached",
+ "file": "bf4efa9b3f7b8a391042c263772633b74d9113e4c4a3a772c68d91146866cc0f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentFiberTests.Given_MountedComponent_When_Disposed_Then_ChildFiberIsDetached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs": "c1889db3a28b06c7f011c496ad02eef6166d3bb7f6b42b60600c5fe461a156d9"
+   }
+  }
+ ],
+ "measured_by": "45957141583",
+ "mutant": {
+  "after": ";",
+  "before": "pass.Ops.Add(new ReconcilePass.Op { Anchor = anchor, Kind = ReconcilePass.OpKind.FiberBegin });",
+  "column": 12,
+  "line": 973,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

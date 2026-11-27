@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed: Given_APerAxisSkewWrittenBeforeABothAxesOne_When_ClassNamesAreParsed_Then_TheBothAxesOneIsPutFirst(\"-skew-x-12 skew-6\",\"skew-6 -skew-x-12\"), Given_APerAxisSkewWrittenBeforeABothAxesOne_When_ClassNamesAreParsed_Then_TheBothAxesOneIsPutFirst(\"-skew-y-3 skew-[3deg]\",\"skew-[3deg] -skew-y-3\")",
+ "file": "73bf491a551bc1173a99caf00cff46640dd1541832b09d082b98fbdfa386f984",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FamilyOrderTests.Given_APerAxisSkewWrittenBeforeABothAxesOne_When_ClassNamesAreParsed_Then_TheBothAxesOneIsPutFirst(\"-skew-x-12 skew-6\",\"skew-6 -skew-x-12\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FamilyOrderTests.cs": "b6d8a9d14208edbfbcd5fbd174674d3404086ea792f0c8974eb6e948545682fa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FamilyOrderTests.Given_APerAxisSkewWrittenBeforeABothAxesOne_When_ClassNamesAreParsed_Then_TheBothAxesOneIsPutFirst(\"-skew-y-3 skew-[3deg]\",\"skew-[3deg] -skew-y-3\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FamilyOrderTests.cs": "b6d8a9d14208edbfbcd5fbd174674d3404086ea792f0c8974eb6e948545682fa"
+   }
+  }
+ ],
+ "measured_by": "45957141583",
+ "mutant": {
+  "after": "",
+  "before": " && StyleArbitraryValueResolver.ImportantCore(cls.AsSpan()).StartsWith(\"divide-\".AsSpan(), StringComparison.Ordinal)",
+  "column": 15,
+  "line": 106,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleDivideClass.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

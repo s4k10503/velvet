@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_ARecordedRemovalOfAChild_When_ItsParentIsRead_Then_ItHasNone",
+ "file": "bf4efa9b3f7b8a391042c263772633b74d9113e4c4a3a772c68d91146866cc0f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedChildListWritesTests.Given_ARecordedRemovalOfAChild_When_ItsParentIsRead_Then_ItHasNone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWritesTests.cs": "6bdc4cf2e1a9033166c485204308fc513acb891175a840cc97c2bef8d28e976a",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674"
+   }
+  }
+ ],
+ "measured_by": "45957141583",
+ "mutant": {
+  "after": ";",
+  "before": "pass.PendingParent[element] = null;",
+  "column": 16,
+  "line": 686,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildListWrites.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

@@ -1,0 +1,35 @@
+{
+ "detail": "EditMode: 1 failed among the 54 case(s) that ran the site: Given_AnInheritorWithReadsToWait_When_TheFontIsReadOnce_Then_ItWaitsOneReadLess",
+ "file": "d5a7686d7033c913960f5a7ffa44035b05feb6a0651098f114e5ec663da52fb8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InheritedFontFamilyPanelTests.Given_AnInheritorWithReadsToWait_When_TheFontIsReadOnce_Then_ItWaitsOneReadLess",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InheritedFontFamilyPanelTests.cs": "20c4cba9bc6a93248dea7bf429db0f240f40be7b287c3ee2b73fa2a9d0610d99",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "45957141583",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 34,
+  "line": 501,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFontScope.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

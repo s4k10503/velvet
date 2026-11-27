@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 1 failed among the 318 case(s) that ran the site: Given_AComponentRenderingNothingAheadOfTheElementASiblingRendersInto_When_BothAreSetInReverseTreeOrder_Then_TheComponentRenderingNothingRendersFirst",
+ "file": "0e4eb1ec2939245de38afec69d95c9253a3c2f3822e9982e541adb56d7da5908",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DrainTreeOrderTests.Given_AComponentRenderingNothingAheadOfTheElementASiblingRendersInto_When_BothAreSetInReverseTreeOrder_Then_TheComponentRenderingNothingRendersFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DrainTreeOrderTests.cs": "8868c94779509f3adfe5556c2883ea3be26b15c60a24e343f249060b95133b23",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45957141583",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 18,
+  "line": 293,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRefPlacement.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "guard removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}
