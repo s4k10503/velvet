@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 139 case(s) that ran the site: Given_ASliceThatParkedAfterOneRow_When_TheResumedSliceCreatesTheRest_Then_EachSeesTheRowsTheParkedSliceApplied",
+ "file": "28c4745c238bef63728079c8e51013bfdf07b335178ae0754510f57d5394852e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RecordedChildListWriteTests.Given_ASliceThatParkedAfterOneRow_When_TheResumedSliceCreatesTheRest_Then_EachSeesTheRowsTheParkedSliceApplied",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RecordedChildListWriteTests.cs": "31ec058199d470927c17c0799a5049e7b5882417e503d75387862e62be93ca5e",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RowModelAccess.cs": "c9281ca1bc8930756e7b643acf56772495143054fc02c02792727059325b4674"
+   }
+  }
+ ],
+ "measured_by": "45919663238",
+ "mutant": {
+  "after": ";",
+  "before": "BeginOrJoinPass();",
+  "column": 16,
+  "line": 636,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

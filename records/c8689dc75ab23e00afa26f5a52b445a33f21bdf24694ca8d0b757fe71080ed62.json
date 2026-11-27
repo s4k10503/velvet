@@ -1,0 +1,52 @@
+{
+ "detail": "EditMode: 3 failed: Given_ARowHoldingAPortalInsideARelocatedElementBesideAnotherPortal_When_AReconcileLeavesItsSlotEmpty_Then_TheirRowsDetachInTreeOrder(\"relative\",\"absolute -z-10\",False,\"b a\"), Given_ARowHoldingTwoPortalsTheLaterOfWhichMountedFirst_When_AReconcileLeavesItsSlotEmpty_Then_TheirRowsDetachInTreeOrder, Given_TwoPortalsMountedInTreeOrderWhereTwoOthersWereUnmounted_When_AReconcileLeavesTheirRowsSlotEmpty_Then_TheirRowsDetachInTreeOrder",
+ "file": "e0d708d08d1c4e5ebfa0a47213f1d2821a03f2b979dac153d52d9200443521c4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DeletedSiblingDetachOrderTests.Given_ARowHoldingAPortalInsideARelocatedElementBesideAnotherPortal_When_AReconcileLeavesItsSlotEmpty_Then_TheirRowsDetachInTreeOrder(\"relative\",\"absolute -z-10\",False,\"b a\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletedSiblingDetachOrderTests.cs": "626c8d14ce4a0c8c234d91901481be522e300da6eb042099b77ae2d8e440db40",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DeletedSiblingDetachOrderTests.Given_ARowHoldingTwoPortalsTheLaterOfWhichMountedFirst_When_AReconcileLeavesItsSlotEmpty_Then_TheirRowsDetachInTreeOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletedSiblingDetachOrderTests.cs": "626c8d14ce4a0c8c234d91901481be522e300da6eb042099b77ae2d8e440db40",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DeletedSiblingDetachOrderTests.Given_TwoPortalsMountedInTreeOrderWhereTwoOthersWereUnmounted_When_AReconcileLeavesTheirRowsSlotEmpty_Then_TheirRowsDetachInTreeOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DeletedSiblingDetachOrderTests.cs": "626c8d14ce4a0c8c234d91901481be522e300da6eb042099b77ae2d8e440db40",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45919663238",
+ "mutant": {
+  "after": ";",
+  "before": "PreOrderTeardown.ClearAndTrim(Portals);",
+  "column": 12,
+  "line": 60,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DeletionPlan.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

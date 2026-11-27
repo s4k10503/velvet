@@ -1,0 +1,104 @@
+{
+ "detail": "EditMode: 220 failed in Velvet.Tests.Styling.Editor: Given_ASpinBesideAnImportantRotation_When_TheLoopTicks_Then_TheImportantRotationHoldsTheSlot, Given_ActiveOverlappingHoverPayloads_When_TheirClassesAreReordered_Then_TheLonghandKeepsItsRulePriority(True), Given_ASurvivingInlineShorthand_When_ALonghandIsInsertedBeforeIt_Then_TheLonghandTakesTheTop(True)",
+ "file": "448f50495d50f0e49f45658bb955a40bb78e99fef56c1b74f4b5296035a2aa71",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimateMotionPanelTests.Given_ASpinBesideAnImportantRotation_When_TheLoopTicks_Then_TheImportantRotationHoldsTheSlot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateMotionPanelTests.cs": "0b7883a3d00ebebb36f8d68bc2d97cb4a2e4138a3106cefc3663b22ceb1dd0b2",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_ASurvivingInlineShorthand_When_ALonghandIsInsertedBeforeIt_Then_TheLonghandTakesTheTop(True)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_ActiveOverlappingHoverPayloads_When_TheirClassesAreReordered_Then_TheLonghandKeepsItsRulePriority(True)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_EqualLayerInlineVariantPayloads_When_Enabled_Then_TheLonghandHoldsTheTop(True)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_InlineClassOccurrences_When_TheirOrderOrCountChanges_Then_TheLastWritersHoldTheirSlots(True,False,\"inset-chain\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_InlineClassOccurrences_When_TheirOrderOrCountChanges_Then_TheLastWritersHoldTheirSlots(True,False,\"wrap-new-inline\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_InlineClassOccurrences_When_TheirOrderOrCountChanges_Then_TheLastWritersHoldTheirSlots(True,True,\"inset-chain\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_InlineClassOccurrences_When_TheirOrderOrCountChanges_Then_TheLastWritersHoldTheirSlots(True,True,\"wrap-new-inline\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_SliceInsetsWrittenInTheOtherOrderThanTailwindOrdersThem_When_TheirOrderOrCountChanges_Then_TheNarrowerInsetHoldsTheTop(True,False,\"append-occurrence\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_SliceInsetsWrittenInTheOtherOrderThanTailwindOrdersThem_When_TheirOrderOrCountChanges_Then_TheNarrowerInsetHoldsTheTop(True,False,\"crossing\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45919663238",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 39,
+  "line": 43,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

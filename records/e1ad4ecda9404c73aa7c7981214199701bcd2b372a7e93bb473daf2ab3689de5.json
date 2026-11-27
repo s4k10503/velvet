@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Reconciler.Editor: Given_HeldWorkThatThrows_When_TheMountThatHeldItEndsInAnExceptionOfItsOwn_Then_ItsOwnPropagates",
+ "file": "888d675c8213ee144e0aa4b5902a45c0113a8c7a8a9b35e6b95cf5a62a3b292a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HeldWorkReleaseTests.Given_HeldWorkThatThrows_When_TheMountThatHeldItEndsInAnExceptionOfItsOwn_Then_ItsOwnPropagates",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HeldWorkReleaseTests.cs": "1b84bf462c5959e59f412468ebb717ad4ef2e18d866963b60b6fc93fa77e81cf",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45919663238",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 50,
+  "line": 132,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

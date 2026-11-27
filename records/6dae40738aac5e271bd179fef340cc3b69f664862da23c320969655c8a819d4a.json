@@ -1,0 +1,89 @@
+{
+ "detail": "EditMode: 6 failed in Velvet.Tests.Reconciler.Editor: Given_AnAnimatePresenceInsideAPortal_When_ThePortalStopsBeingRendered_Then_TheDepartedChildIsNotResurrected, Given_ADeletedRowHoldingAPortalOfALabel_When_ThePassEnds_Then_TheLabelWasResetForReuse, Given_ADeletedRowHoldingTheOnlyPortalOnATarget_When_ThePassEnds_Then_TheTargetKeepsNoBridge",
+ "file": "14c04642da77872dad0a6b981d358a526bb947af046c1b7eea7c66c0999ce9da",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceStateRetirementTests.Given_AnAnimatePresenceInsideAPortal_When_ThePortalStopsBeingRendered_Then_TheDepartedChildIsNotResurrected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceStateRetirementTests.cs": "563e37c166bc70d5f28ca71963843601f0651cf1461b142b8168d5d39db00561",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalDeletionAtApplyTests.Given_ADeletedRowHoldingAPortalOfALabel_When_ThePassEnds_Then_TheLabelWasResetForReuse",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalDeletionAtApplyTests.cs": "db5a6c840a634a4be7e2f13329a2078e28aeb96daabd7f63ad5631643de91e83",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalDeletionAtApplyTests.Given_ADeletedRowHoldingTheOnlyPortalOnATarget_When_ThePassEnds_Then_TheTargetKeepsNoBridge",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalDeletionAtApplyTests.cs": "db5a6c840a634a4be7e2f13329a2078e28aeb96daabd7f63ad5631643de91e83",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalElementTargetTests.Given_a_portal_whose_last_row_is_relocated_and_holds_a_portal_into_the_same_container_When_it_unmounts_and_a_component_beside_it_renders_again_Then_the_component_patches_its_own_row",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalElementTargetTests.cs": "400707d13521fc5566cab0de90871fe4a8d5223d196420377aaa60c15931fc3f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalOffChainAncestorTests.Given_TwoPortalsInOneMount_When_TheyUnmountOneAfterTheOther_Then_TheMountIsHeldUntilTheLastOneGoes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalOffChainAncestorTests.cs": "d7aca11b19d938062d908a0eab7e29ae01e529723ec1ff83b30d77a0b2de4262",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalOffChainFixtureBase.cs": "bfa977eca9cf32058756c244bcdbab75815ca6838e0a3f92285b79fdeb17bcce",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalOffChainSupport.cs": "88523c7fcea1803392e3762cd6aeec35acf75b7ba199d3972326f28b6f58cc28",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WorldSpaceHostRemovalTests.Given_ABoundaryAboveAComponentWhoseWorldSpaceHoldsAZPlacedElementThatThrowsAsItDetaches_When_ADrainRemovesTheWorldSpace_Then_TheBoundaryReportsTheErrorOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/WorldSpaceHostRemovalTests.cs": "87d6c19d7445f0bed26b2b671ff20fedb2f94fd2ac0eb6ad159c19815d80bc69",
+    "Packages/com.velvet.core/TestUtilities/EventLog.cs": "e191b8d91d56ab6eb1633a8f37e5282dd11f4cbfd649b59ab27deab3a1e4b490",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45919663238",
+ "mutant": {
+  "after": ";",
+  "before": "ReleaseDetachedPortal(element, detached, plan);",
+  "column": 16,
+  "line": 663,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 163 case(s) that ran the site: Given_ASuspenseAboveAHostWhoseUpdateMountsAPortalElementWhoseChildSuspends_When_TheResourceResolves_Then_TheBoundaryRevealsTheContent",
+ "file": "d85fd7f278055d71fa873933f5d412231866c62e85d833cd9eb856c77b054ea8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_ASuspenseAboveAHostWhoseUpdateMountsAPortalElementWhoseChildSuspends_When_TheResourceResolves_Then_TheBoundaryRevealsTheContent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "124ee0eb8b5296ac77b0f972ac0da83f3b63994b674d6038fba527ccc17590ed",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45919663238",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 42,
+  "line": 2048,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

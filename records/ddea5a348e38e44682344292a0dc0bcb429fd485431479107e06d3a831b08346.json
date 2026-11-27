@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Reconciler.Editor: Given_ATargetChildCarryingLastBehindWhichAPortalRowMountsAChild_When_AResizeTakesTheRowsOfEmptiedItemsAway_Then_ItMatchesAgain",
+ "file": "8d39435513aeeaee3a590cf69c797e9c9ece76f12d6024ed57883409be3e32f0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VirtualListStructuralVariantTests.Given_ATargetChildCarryingLastBehindWhichAPortalRowMountsAChild_When_AResizeTakesTheRowsOfEmptiedItemsAway_Then_ItMatchesAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VirtualListStructuralVariantTests.cs": "b1ba13b2d4bd7a2e759ce46318b3f9f35803f5f9203c7ebeaf838d72a4924314",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45919663238",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 37,
+  "line": 3454,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 1 failed among the 485 case(s) that ran the site: Given_ALabelWithAMinWidthWritten_When_ItsInlineOverflowIsSetHiddenAndItsOwnGeometryEventFires_Then_ItsMinWidthIsReleased",
+ "file": "1b386daf266e090edccf9817a482b9946601be9de6a6361d77af18240ca0dc3c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TextItemParentEventTests.Given_ALabelWithAMinWidthWritten_When_ItsInlineOverflowIsSetHiddenAndItsOwnGeometryEventFires_Then_ItsMinWidthIsReleased",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextItemParentEventTests.cs": "1e6e54e6ba1bf4b2bc17bf250f72b2e68aeb93bfb3860be2fdaa4e68d0247ff2",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45919663238",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 45,
+  "line": 441,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleFlexMinSizeManipulator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

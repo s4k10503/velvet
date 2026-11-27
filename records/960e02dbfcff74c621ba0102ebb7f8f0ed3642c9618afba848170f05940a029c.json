@@ -1,0 +1,49 @@
+{
+ "detail": "EditMode: 3 failed among the 2194 case(s) that ran the site: Given_ARootWhoseMountEffectSetsAnotherRootsStateIsPending_When_ATransitionCallbackMountsARoot_Then_TheEffectsUpdateIsNotOnTheTransitionTier, Given_ATransitionCallbackThatMountsARootWhoseLayoutEffectRemovesAChild_When_TheChildsEffectCleanupSetsAnotherRootsState_Then_ThatUpdateIsNotOnTheTransitionTier, Given_ATransitionCallbackWhoseMountRanPendingEffects_When_ItSetsAnotherRootsStateAfterTheMount_Then_ThatUpdateWaitsOnTheTransitionTier",
+ "file": "d15e045c35502b5dbf1fa27d6b16224ae747b17b943244ed7df1f0be1db1baa3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MutationPhaseUpdateOnAnotherRootTests.Given_ARootWhoseMountEffectSetsAnotherRootsStateIsPending_When_ATransitionCallbackMountsARoot_Then_TheEffectsUpdateIsNotOnTheTransitionTier",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MutationPhaseUpdateOnAnotherRootTests.cs": "d4ebb77e25851349be5dcc90547c743058f71ea53e7457ac75c49e6121a65ce3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MutationPhaseUpdateOnAnotherRootTests.Given_ATransitionCallbackThatMountsARootWhoseLayoutEffectRemovesAChild_When_TheChildsEffectCleanupSetsAnotherRootsState_Then_ThatUpdateIsNotOnTheTransitionTier",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MutationPhaseUpdateOnAnotherRootTests.cs": "d4ebb77e25851349be5dcc90547c743058f71ea53e7457ac75c49e6121a65ce3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MutationPhaseUpdateOnAnotherRootTests.Given_ATransitionCallbackWhoseMountRanPendingEffects_When_ItSetsAnotherRootsStateAfterTheMount_Then_ThatUpdateWaitsOnTheTransitionTier",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MutationPhaseUpdateOnAnotherRootTests.cs": "d4ebb77e25851349be5dcc90547c743058f71ea53e7457ac75c49e6121a65ce3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45919663238",
+ "mutant": {
+  "after": ";",
+  "before": "FiberWorkLoop.SetTransitionsAside();",
+  "column": 12,
+  "line": 840,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 143 case(s) that ran the site: Given_AKeyedListLongerThanARowBlock_When_ItsTailIsRemoved_Then_TheRowsItKeepsStay",
+ "file": "778827426ff4eee04c5736f7c023fa6eb6b8c67a73ffe73c402f8bb9e25f4afa",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReconcilerKeyedTests.Given_AKeyedListLongerThanARowBlock_When_ItsTailIsRemoved_Then_TheRowsItKeepsStay",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ReconcilerKeyedTests.cs": "e7ec04c2cba0ff75a83fcfb36163792e213c4e7b79e971330743973c82f35a6c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681"
+   }
+  }
+ ],
+ "measured_by": "45919663238",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 41,
+  "line": 1321,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

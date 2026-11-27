@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: the editor was killed at 1679s, 1.5 times the baseline's 1116s plus 5s, with no readable result",
+ "file": "d15e045c35502b5dbf1fa27d6b16224ae747b17b943244ed7df1f0be1db1baa3",
+ "killers": [],
+ "measured_by": "45919663238",
+ "mutant": {
+  "after": ";",
+  "before": "s_withPendingPassiveWork.RemoveAt(0);",
+  "column": 16,
+  "line": 873,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed (timed out)"
+}

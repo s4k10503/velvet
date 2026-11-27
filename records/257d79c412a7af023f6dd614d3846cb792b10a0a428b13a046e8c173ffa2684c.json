@@ -1,0 +1,120 @@
+{
+ "detail": "EditMode: 11 failed: Given_PlainClasses_When_ClassesAreApplied_Then_EachIsOnTheClassList, Given_APortalOutsideTheRemovedRow_When_TheRowIsCleared_Then_TheBindingOfAChildOfTheRowStaysRegistered, Given_ALabelGivenAWeightClass_When_TheClassIsRemoved_Then_NoTrickleDownCallbackItWasGivenRemains",
+ "file": "e92bcb721c53d77aeff89e463fb9ff08cb77571b2411f1c3af205dc3fb6fd89e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ApplyClassNamesTokenOwnershipTests.Given_PlainClasses_When_ClassesAreApplied_Then_EachIsOnTheClassList",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ApplyClassNamesTokenOwnershipTests.cs": "b0128ef5396e785feb3cda09c8c657fcb5afe3ecb0e934ed3465dfeb34121b44"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DiscardedSubtreeTeardownTests.Given_APortalOutsideTheRemovedRow_When_TheRowIsCleared_Then_TheBindingOfAChildOfTheRowStaysRegistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DiscardedSubtreeTeardownTests.cs": "a42855ca38fe4a4e8efcffee09f31cd3a2d2527f70c85bdcc3d0b8f3364ef5f9",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FontFamilyFacesPanelTests.Given_ALabelGivenAWeightClass_When_TheClassIsRemoved_Then_NoTrickleDownCallbackItWasGivenRemains",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FontFamilyFacesPanelTests.cs": "a8851e3e7e2ba4d2f85b5738b40e526c0d2011aa96fce463e986c40257367d7f",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LiveClassListOrderTests.Given_TheTokenFamiliesTheMotionReapplyLooksFor_When_EitherRoutingRunsThem_Then_OnlyTheOneNoResolverClaimsReachesTheLiveClassList",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LiveClassListOrderTests.cs": "881116fcbaab9e42c33c7459371ac1f6bb03a17bf877fb44c0903902cc922c53",
+    "Packages/com.velvet.core/TestUtilities/StyleUtilityTableProbe.cs": "58593d5382fa23d3309ac2c37e52681c1ac9f00e9cc3f7b201711b900e539707"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LiveClassListOrderTests.Given_TwoBaseClassesWritingOnePropertyUnderAPayload_When_TheOrderTheyWereAddedInIsReversed_Then_TheSurvivingClassesAreTheSameBothWays",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LiveClassListOrderTests.cs": "881116fcbaab9e42c33c7459371ac1f6bb03a17bf877fb44c0903902cc922c53",
+    "Packages/com.velvet.core/TestUtilities/StyleUtilityTableProbe.cs": "58593d5382fa23d3309ac2c37e52681c1ac9f00e9cc3f7b201711b900e539707"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LiveClassListOrderTests.Given_TwoClassesOnAClippedElement_When_TheOrderTheyWereAddedInIsReversed_Then_ItsWrapperCarriesTheSameClassesBothWays",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LiveClassListOrderTests.cs": "881116fcbaab9e42c33c7459371ac1f6bb03a17bf877fb44c0903902cc922c53",
+    "Packages/com.velvet.core/TestUtilities/StyleUtilityTableProbe.cs": "58593d5382fa23d3309ac2c37e52681c1ac9f00e9cc3f7b201711b900e539707"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionSlotContextTests.Given_ARemovedImportantProjection_When_TheProviderReadsTheReaddedPlainClass_Then_ItDoesNotRestoreTheRemovedPriority",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSlotContextTests.cs": "62744495cabcae13ac968690fa48a5e29627abe75f93d50768d925d87e99f4c4",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionSlotContextTests.Given_ASuppressedImportantClass_When_ItIsReaddedToTheLiveList_Then_TheProviderReadsItWithoutImportantPriority",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSlotContextTests.cs": "62744495cabcae13ac968690fa48a5e29627abe75f93d50768d925d87e99f4c4",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionSlotContextTests.Given_ImportantAndPlainRestingClasses_When_TheProviderReadsThem_Then_ItKeepsTheirPriorityAndOmitsTheSwap",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSlotContextTests.cs": "62744495cabcae13ac968690fa48a5e29627abe75f93d50768d925d87e99f4c4",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.TransitionDiscretePanelTests.Given_AWatchedElementATransitionRunsOn_When_AClassNoRuleNamesToggles_Then_ItsStylePassesAllocateAsAnUnwatchedOnesDo",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TransitionDiscretePanelTests.cs": "dc00077b34c8195b19fb4dcaee09b3c1ebeb7e63748b31b55cc3c00346fdd840",
+    "Packages/com.velvet.core/TestUtilities/CallbackRegistryProbe.cs": "4ac8fc3f649426af994aed9c0e339fad2aeaee821bb887625c427dbc49a63792",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "0b34227c0501b0b06aafcc9acba0c02b9136f4cc2959498d5f22b3db63a22681"
+   }
+  }
+ ],
+ "measured_by": "45919663238",
+ "mutant": {
+  "after": "||",
+  "before": "&&",
+  "column": 15,
+  "line": 237,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTransitionBehavior.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}
