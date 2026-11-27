@@ -1,0 +1,49 @@
+{
+ "detail": "EditMode: 3 failed among the 573 case(s) that ran the site: Given_AnEmptyRangeRetargetedOntoTheEndOfAnotherRange_When_TheOtherGrowsAndTheEmptyOneGainsARow_Then_ItLandsBehind, Given_APortalsOwnChildrenGrewAheadOfItsComponent_When_ThatComponentRerenders_Then_ItRewritesItsOwnRow, Given_TwoEmptyPortalsAndTheFirstsComponentGrew_When_TheSecondGainsARow_Then_ItLandsBehind",
+ "file": "24c1de412bb4041319ca23437206fab9e4f39f3c03e115b5b630c08597f4e150",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_APortalsOwnChildrenGrewAheadOfItsComponent_When_ThatComponentRerenders_Then_ItRewritesItsOwnRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "fdc7e8bc4ccec98ace786806c05ca6f2215c6170c5d17c56804c82cd7e975943",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_AnEmptyRangeRetargetedOntoTheEndOfAnotherRange_When_TheOtherGrowsAndTheEmptyOneGainsARow_Then_ItLandsBehind",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "fdc7e8bc4ccec98ace786806c05ca6f2215c6170c5d17c56804c82cd7e975943",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_TwoEmptyPortalsAndTheFirstsComponentGrew_When_TheSecondGainsARow_Then_ItLandsBehind",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "fdc7e8bc4ccec98ace786806c05ca6f2215c6170c5d17c56804c82cd7e975943",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45820391239",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 21,
+  "line": 238,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

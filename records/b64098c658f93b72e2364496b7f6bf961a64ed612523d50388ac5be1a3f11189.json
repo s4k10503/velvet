@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 15 case(s) that ran the site: Given_ARingBracketHoldingNoColourWithAModifierReadingAPercentage_When_Mounted_Then_NoRingIsDrawn(\"ring-[number:5px]/[var(--a)]\"), Given_ARingBracketHoldingNoColourWithAModifierReadingAPercentage_When_Mounted_Then_NoRingIsDrawn(\"ring-[number:5px]/(--a)\")",
+ "file": "e5699b531c8a9c86e930c4c61a54a7043312de815fc6e5c3362e373e56f621c3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARingBracketHoldingNoColourWithAModifierReadingAPercentage_When_Mounted_Then_NoRingIsDrawn(\"ring-[number:5px]/(--a)\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "a35149c967993d8b7355c17c6536b5a77db3220d329067c9cc6a2e772829655c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowCustomPropertyTests.Given_ARingBracketHoldingNoColourWithAModifierReadingAPercentage_When_Mounted_Then_NoRingIsDrawn(\"ring-[number:5px]/[var(--a)]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowCustomPropertyTests.cs": "a35149c967993d8b7355c17c6536b5a77db3220d329067c9cc6a2e772829655c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45820391239",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 24,
+  "line": 453,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+  "shadowed": [
+   "clause removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

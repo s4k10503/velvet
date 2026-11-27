@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 208 case(s) that ran the site: Given_AProviderInsideThePortal_When_TheHostReRendersAndThenTheChildReRendersAlone_Then_ItStillReadsTheInPortalValue",
+ "file": "8d39435513aeeaee3a590cf69c797e9c9ece76f12d6024ed57883409be3e32f0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalContextInheritanceTests.Given_AProviderInsideThePortal_When_TheHostReRendersAndThenTheChildReRendersAlone_Then_ItStillReadsTheInPortalValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PortalContextInheritanceTests.cs": "0239cef46d2d729c1b16bb606ecd4012d92a9f9e07b164ddb692581bab6cb5ab",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  }
+ ],
+ "measured_by": "45820391239",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.PortalState.Stored.OpenShiftedBehind(patch.Element);",
+  "column": 12,
+  "line": 1677,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

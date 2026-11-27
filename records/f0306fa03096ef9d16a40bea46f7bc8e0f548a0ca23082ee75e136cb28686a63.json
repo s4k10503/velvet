@@ -1,0 +1,53 @@
+{
+ "detail": "EditMode: 4 failed: Given_AnElementShowingASkew_When_AnEnterWithNoPassDrawsToItsEnd_Then_TheSkewIsTheOneItShowed, Given_APlayEndingOnASkewTheElementLacks_When_ItDraws_Then_TheSkewIsAttached, Given_APlayHoldingTheSkewThatEndsOnTheElementsOwnClass_When_ItIsReleasedHalfway_Then_TheSkewIsTheClasses",
+ "file": "8c53fb15dc7cba1edb25321527c60cabbbb8b37f2e82bbad9c8340a12def2565",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PaintLeaseTests.Given_APlayEndingOnASkewTheElementLacks_When_ItDraws_Then_TheSkewIsAttached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintLeaseTests.cs": "39a31f7a52bda0a700c01087584067459dd0464fb4f3c91bd6793e6e831574a2",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PaintLeaseTests.Given_APlayHoldingTheSkewThatEndsOnTheElementsOwnClass_When_ItIsReleasedHalfway_Then_TheSkewIsTheClasses",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintLeaseTests.cs": "39a31f7a52bda0a700c01087584067459dd0464fb4f3c91bd6793e6e831574a2",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PaintLeaseTests.Given_APlayHoldingTheSkewThatHasDrawnHalfway_When_AnExitOpensOverIt_Then_TheSkewHoldsTheHalfwayAngle",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintLeaseTests.cs": "39a31f7a52bda0a700c01087584067459dd0464fb4f3c91bd6793e6e831574a2",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PaintLeaseTests.Given_AnElementShowingASkew_When_AnEnterWithNoPassDrawsToItsEnd_Then_TheSkewIsTheOneItShowed",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintLeaseTests.cs": "39a31f7a52bda0a700c01087584067459dd0464fb4f3c91bd6793e6e831574a2",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45820391239",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 37,
+  "line": 61,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleSkewClass.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

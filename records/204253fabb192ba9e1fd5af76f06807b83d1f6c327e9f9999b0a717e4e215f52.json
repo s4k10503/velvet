@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed: Given_AnotherRootsPortalRowAloneInAnElementOfOneRoot_When_ThatRootRendersAChildIntoIt_Then_TheRowStopsMatchingOnly, Given_AnotherRootsPortalRowAloneInAScrollViewOfOneRoot_When_ThatRootRendersAChildIntoIt_Then_TheRowStopsMatchingOnly",
+ "file": "5b487d3b6732ebb8d84251e993b7847e989e63c22f526a0c499ee8624da37d47",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CrossRootStructuralVariantTests.Given_AnotherRootsPortalRowAloneInAScrollViewOfOneRoot_When_ThatRootRendersAChildIntoIt_Then_TheRowStopsMatchingOnly",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossRootStructuralVariantTests.cs": "e48c99014cb47789a515416e49633f48e719d381941586dd35902843c8149546",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CrossRootStructuralVariantTests.Given_AnotherRootsPortalRowAloneInAnElementOfOneRoot_When_ThatRootRendersAChildIntoIt_Then_TheRowStopsMatchingOnly",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossRootStructuralVariantTests.cs": "e48c99014cb47789a515416e49633f48e719d381941586dd35902843c8149546",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45820391239",
+ "mutant": {
+  "after": "",
+  "before": "if (element.userData is ComponentFiber) return element;",
+  "column": 16,
+  "line": 74,
+  "operator": "guard removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/SharedRowContainers.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

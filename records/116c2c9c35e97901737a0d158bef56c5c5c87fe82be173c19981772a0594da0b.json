@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_TheHolderExcluded_When_ATreeIsMountedOnAPanelWithoutTheSheet_Then_OnlyALaterMountIsReported",
+ "file": "888d675c8213ee144e0aa4b5902a45c0113a8c7a8a9b35e6b95cf5a62a3b292a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BuildInclusionOptOutTests.Given_TheHolderExcluded_When_ATreeIsMountedOnAPanelWithoutTheSheet_Then_OnlyALaterMountIsReported",
+   "files": {
+    "Packages/com.velvet.core/Editor/PlayerBuild/Tests/Editor/BuildInclusionOptOutTests.cs": "c6f00c522e2d483c3f0812fb0359c1b01cb82c793bc59c96919dda249ee324d9",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45820391239",
+ "mutant": {
+  "after": ";",
+  "before": "if (opensWave) FiberWave.End(context);",
+  "column": 20,
+  "line": 116,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AReleasedElement_When_TheFontsChange_Then_ItsInlineFontIsNotWrittenAgain",
+ "file": "8bf0319faea977ea3022ee21ae6d9eb14288705e52cfa5be955cf581248428b1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DefaultFamilyHeldRootsTests.Given_AReleasedElement_When_TheFontsChange_Then_ItsInlineFontIsNotWrittenAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyHeldRootsTests.cs": "401c31ee0a8881809c592c8eb4a23869db1cbba4cd9057ebe02eb930b44870e9"
+   }
+  }
+ ],
+ "measured_by": "45820391239",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 37,
+  "line": 121,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DefaultFamilyRoots.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

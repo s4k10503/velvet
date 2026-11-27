@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnUnkeyedListHandedItsOwnNodes_When_ItReconciles_Then_ItsWrapperLookupsDoNotGrowWithTheRows; 1 other editor(s) were up",
+ "file": "778827426ff4eee04c5736f7c023fa6eb6b8c67a73ffe73c402f8bb9e25f4afa",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FlatPassOldInstanceReadTests.Given_AnUnkeyedListHandedItsOwnNodes_When_ItReconciles_Then_ItsWrapperLookupsDoNotGrowWithTheRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FlatPassOldInstanceReadTests.cs": "59b1ae18c7eb21e46c5c440557e3f09dfd09282607a64340c3d5fb541f9e52ee",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "45820391239",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 38,
+  "line": 1103,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "8bf0319faea977ea3022ee21ae6d9eb14288705e52cfa5be955cf581248428b1",
+ "killers": [],
+ "measured_by": "45820391239",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 45,
+  "line": 140,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DefaultFamilyRoots.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "survived"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 208 case(s) that ran the site: Given_APortalInsideAnotherOnOneTarget_When_TheInnersRowsGrowInThePassPatchingTheOuter_Then_TheOuterRecordsOnlyItsOwnRows",
+ "file": "8d39435513aeeaee3a590cf69c797e9c9ece76f12d6024ed57883409be3e32f0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.NestedPortalRangeTests.Given_APortalInsideAnotherOnOneTarget_When_TheInnersRowsGrowInThePassPatchingTheOuter_Then_TheOuterRecordsOnlyItsOwnRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/NestedPortalRangeTests.cs": "c8ea207a15e2e0eb661ccb5b948ea00b90dcdf01c2cd4f197cd89c09c0105165",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "ecaee7447e342d6fd7cd601acaac6774a7220b2a3add9a0f24d793d37a5733ae"
+   }
+  }
+ ],
+ "measured_by": "45820391239",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.PortalState.Stored.AddGrowth(target, delta);",
+  "column": 12,
+  "line": 1752,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}

@@ -1,0 +1,68 @@
+{
+ "detail": "EditMode: 4 failed: Given_APendingTarget_When_AnExternalScrollPrecedesLayout_Then_TheOldTargetIsCancelled(Instant,False), Given_APendingTarget_When_AnExternalScrollPrecedesLayout_Then_TheOldTargetIsCancelled(Smooth,False), Given_APendingTarget_When_AnExternalScrollPrecedesLayout_Then_TheOldTargetIsCancelled(Instant,True); 1 other editor(s) were up",
+ "file": "8d39435513aeeaee3a590cf69c797e9c9ece76f12d6024ed57883409be3e32f0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VirtualListSmoothScrollTests.Given_APendingTarget_When_ARangeClampPrecedesLayout_Then_TheTargetStillApplies",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListSmoothScrollTests.cs": "12a677e40261acee9dfec82a0664a824759379ec500e0a06a3e39f76a56edd2e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListSmoothScrollTests.Given_APendingTarget_When_AnExternalScrollPrecedesLayout_Then_TheOldTargetIsCancelled(Instant,False)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListSmoothScrollTests.cs": "12a677e40261acee9dfec82a0664a824759379ec500e0a06a3e39f76a56edd2e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListSmoothScrollTests.Given_APendingTarget_When_AnExternalScrollPrecedesLayout_Then_TheOldTargetIsCancelled(Instant,True)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListSmoothScrollTests.cs": "12a677e40261acee9dfec82a0664a824759379ec500e0a06a3e39f76a56edd2e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListSmoothScrollTests.Given_APendingTarget_When_AnExternalScrollPrecedesLayout_Then_TheOldTargetIsCancelled(Smooth,False)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListSmoothScrollTests.cs": "12a677e40261acee9dfec82a0664a824759379ec500e0a06a3e39f76a56edd2e",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "18b6b404187836003ea0db593918596c4ed3d84ab35733a088284926133a8987",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "45820391239",
+ "mutant": {
+  "after": "",
+  "before": " && ChildListWrites.StagesPatch(element)",
+  "column": 15,
+  "line": 424,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3e47cc6d3e0c5a88c43c95facce7a8ad2523b5ac88b50121b50f7361763b13ec",
+ "verdict": "killed"
+}
